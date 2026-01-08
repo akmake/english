@@ -13,12 +13,14 @@ export function injectAuthStore(store) {
   authStoreApi = store;
 }
 
-// יצירת מופע Axios
+// יצירת מופע Axios - התיקון כאן!
 const api = axios.create({
-  // אם משתמשים ב-Vite Proxy, זה בסדר להשאיר /api. 
-  // לייצור, עדיף להשתמש ב-import.meta.env.VITE_API_URL
-  baseURL: '/api', 
-  withCredentials: true,
+  // בדיקה: אם אנחנו ב-Production (רנדר), פנה לכתובת השרת המלאה.
+  // אם אנחנו בפיתוח (localhost), תשתמש ב-/api והפרוקסי של Vite יטפל בזה.
+  baseURL: import.meta.env.MODE === 'production'
+    ? 'https://english-t9tj.onrender.com/api'
+    : '/api',
+  withCredentials: true, // חובה כדי להעביר קוקיז בין דומיינים שונים
 });
 
 let csrfTokenPromise = null;
@@ -98,6 +100,7 @@ api.interceptors.response.use(
 
       try {
         // בקשת חידוש טוקן
+        // שים לב: בגלל שהגדרנו baseURL למעלה, זה יישלח לכתובת הנכונה אוטומטית
         const { data } = await api.post('/auth/refresh');
         
         // עדכון ה-Store בהצלחה
