@@ -34,9 +34,12 @@ app.use(helmet({
   crossOriginResourcePolicy: false // מאפשר טעינת תמונות אם צריך
 }));
 
-app.use(cors({ 
-  origin: process.env.CLIENT_URL || 'http://localhost:5173', 
-  credentials: true 
+app.use(cors({
+  origin: [
+    'http://localhost:5173',                   // לפיתוח מקומי
+    'https://english-1-hwkw.onrender.com'      // הכתובת של האתר שלך ברנדר
+  ],
+  credentials: true
 }));
 
 // הגדלת מגבלת הגודל (Payload Too Large)
@@ -49,14 +52,12 @@ app.use(cookieParser(process.env.JWT_ACCESS_SECRET || 'temp-secret-key-for-dev')
 app.use(mongoSanitize());
 
 const csrfProtection = csurf({
-  cookie: { 
+  cookie: {
     key: '_csrf',
     path: '/',
     httpOnly: true,
-    // ב-Production זה יהיה true, בפיתוח false
-    secure: process.env.NODE_ENV === 'production', 
-    // בפיתוח חייבים Lax כדי שזה יעבוד בין פורט 5173 ל-4000
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax' 
+    secure: true, // ב-Render חייב להיות true (בגלל HTTPS)
+    sameSite: 'none' // חובה! אחרת הדפדפן יחסום את הקוקי בין הדומיינים
   },
 });
 
