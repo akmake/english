@@ -38,7 +38,7 @@ router.get('/days/:dayNumber', requireAuth, async (req, res) => {
   }
 });
 
-// --- 3. משיכת מילים לחזרות (נשאר ללא שינוי) ---
+// --- 3. משיכת מילים לחזרות (למילים של המערכת - Leitner System) ---
 router.get('/review-session', requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.user._id).populate('vocabulary.learning.word');
@@ -72,8 +72,10 @@ router.get('/review-session', requireAuth, async (req, res) => {
   }
 });
 
+// --- 4. סימולציה ומבחנים ---
 router.get('/simulation/adaptive', requireAuth, getAdaptiveTestPool);
 
+// --- 5. עדכון מילים של המערכת (Leitner) ---
 router.post('/submit-result', requireAuth, async (req, res) => {
   try {
     const { wordId, success } = req.body;
@@ -114,6 +116,104 @@ router.post('/submit-result', requireAuth, async (req, res) => {
   } catch (error) {
     console.error("Submit Error:", error);
     res.status(500).json({ error: 'שגיאה בשמירת התקדמות' });
+  }
+});
+
+// ============================================================================
+//  SECTION: PERSONAL VAULT & DEEP DRILL (החלק החדש למאגר האישי והחפירה)
+// ============================================================================
+
+// א. הוספת מילה למאגר האישי
+router.post('/add-personal-word', requireAuth, async (req, res) => {
+  try {
+    const { english, hebrew } = req.body;
+    
+    if (!english || !hebrew) {
+      return res.status(400).json({ error: 'חובה לספק אנגלית ועברית' });
+    }
+
+    const user = await User.findById(req.user._id);
+
+    // בדיקה אם המילה כבר קיימת כדי למנוע כפילויות
+    const exists = user.personalVocabulary.find(
+      w => w.english.toLowerCase() === english.toLowerCase()
+    );
+
+    if (exists) {
+      return res.status(400).json({ error: 'המילה כבר קיימת במאגר שלך' });
+    }
+
+    // הוספה למערך עם רמת שליטה 0
+    user.personalVocabulary.push({ english, hebrew });
+    await user.save();
+
+    res.json({ message: 'נוסף בהצלחה', word: user.personalVocabulary[user.personalVocabulary.length - 1] });
+  } catch (error) {
+    console.error("Add Personal Word Error:", error);
+    res.status(500).json({ error: 'שגיאה בהוספת מילה' });
+  }
+});
+
+// ב. שליפת מילים ל"חפירה" (Deep Drill)
+// שולף מילים שהמשתמש עדיין לא הגיע ל-100% שליטה בהן, ושהזמן שלהן הגיע
+router.get('/personal-drill', requireAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    const now = new Date();
+
+    // סינון: מילים שרמת השליטה בהן נמוכה מ-100 וזמן החזרה שלהן הגיע
+    // (בתוך סשן חפירה, זמן החזרה יהיה מיידי עד שהמילה תושלם)
+    const drillWords = user.personalVocabulary.filter(w => 
+      w.masteryLevel < 100 && new Date(w.nextReview) <= now
+    );
+
+    res.json(drillWords);
+  } catch (error) {
+    console.error("Drill Fetch Error:", error);
+    res.status(500).json({ error: 'שגיאה בטעינת מילים לחפירה' });
+  }
+});
+
+// ג. עדכון התקדמות בחפירה (Update Drill Progress)
+router.post('/update-personal-progress', requireAuth, async (req, res) => {
+  try {
+    const { wordId, success } = req.body;
+    const user = await User.findById(req.user._id);
+
+    // מציאת המילה בתוך המערך בעזרת ה-ID שלה
+    const wordItem = user.personalVocabulary.id(wordId);
+
+    if (!wordItem) {
+      return res.status(404).json({ error: 'מילה לא נמצאה' });
+    }
+
+    if (success) {
+      // הצלחה: מעלים את רמת השליטה (נניח שיש 4 שלבים, אז כל שלב 25 נקודות)
+      wordItem.masteryLevel = Math.min(wordItem.masteryLevel + 25, 100);
+      
+      if (wordItem.masteryLevel >= 100) {
+        // אם סיים את החפירה להיום -> דוחים למחר
+        wordItem.nextReview = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      } else {
+        // אם עדיין לא סיים את כל המשחקים -> נשאר זמין מיידית להמשך הסשן
+        wordItem.nextReview = new Date();
+      }
+    } else {
+      // כישלון: המילה "נופלת" בחזרה להתחלה. החפירה לא נגמרת עד שיודעים מושלם!
+      wordItem.masteryLevel = 0;
+      wordItem.nextReview = new Date(); // זמין מיידית לניסיון חוזר
+    }
+
+    await user.save();
+    res.json({ 
+      message: success ? 'כל הכבוד' : 'לא נורא, נסה שוב', 
+      mastery: wordItem.masteryLevel,
+      nextReview: wordItem.nextReview
+    });
+
+  } catch (error) {
+    console.error("Update Drill Error:", error);
+    res.status(500).json({ error: 'שגיאה בעדכון התקדמות' });
   }
 });
 

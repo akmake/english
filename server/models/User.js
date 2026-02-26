@@ -26,14 +26,25 @@ const userSchema = new mongoose.Schema(
     },
 
     // --- חדש: מערכת למידה (Amirnet) ---
+    
+    // 1. למידה מערכתית (מילים מובנות)
     vocabulary: {
-      known: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Word' }], // מילים שידועות
+      known: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Word' }],
       learning: [{
         word: { type: mongoose.Schema.Types.ObjectId, ref: 'Word' },
         box: { type: Number, default: 1 }, // קופסאות לייטנר (1-5)
         nextReview: { type: Date, default: Date.now }
       }]
     },
+
+    // 2. מאגר אישי (Deep Drill - החפירה)
+    personalVocabulary: [{
+      english: { type: String, required: true },
+      hebrew: { type: String, required: true },
+      masteryLevel: { type: Number, default: 0 }, // רמת שליטה (עולה ככל שמצליחים במשחקים)
+      nextReview: { type: Date, default: Date.now },
+      addedAt: { type: Date, default: Date.now }
+    }],
 
     // --- מקורי: שדות מהפרויקט הקודם (Cart & Security) ---
     // נשמר כדי לא לשבור לך לוגיקה קודמת 
@@ -55,7 +66,7 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// --- מתודות וירטואליות (נשמרו מהמקור) --- [cite: 761]
+// --- מתודות וירטואליות (נשמרו מהמקור) ---
 userSchema.virtual('isLocked').get(function () {
   return !!(this.lockUntil && this.lockUntil > Date.now());
 });

@@ -9,10 +9,13 @@ import mongoose from 'mongoose';
 
 // ייבוא נתיבים
 import authRoutes from './routes/auth.js';
-import learnRoutes from './routes/learnRoutes.js'; // 1. הוספנו את נתיב הלימוד (חשוב!)
+import learnRoutes from './routes/learnRoutes.js';
 
 // ייבוא מידלוור
 import { requireAuth } from './middlewares/authMiddleware.js';
+
+// בדיקה אם אנחנו בפיתוח או בייצור
+const isProduction = process.env.NODE_ENV === 'production';
 
 // חיבור למסד הנתונים
 const connectDB = async () => {
@@ -24,57 +27,64 @@ const connectDB = async () => {
     process.exit(1);
   }
 };
-// הפעלת החיבור
 await connectDB();
 
 const app = express();
 
 // --- הגדרות אבטחה בסיסיות ---
 app.use(helmet({ 
-  crossOriginResourcePolicy: false // מאפשר טעינת תמונות אם צריך
+  crossOriginResourcePolicy: false 
 }));
 
 app.use(cors({
   origin: [
-    'http://localhost:5173',                   // לפיתוח מקומי
-    'https://english-1-hwkw.onrender.com'      // הכתובת של האתר שלך ברנדר
+    'http://localhost:5173',               // פיתוח
+    'https://english-1-hwkw.onrender.com'  // פרודקשן
   ],
-  credentials: true
+  credentials: true 
 }));
 
-// הגדלת מגבלת הגודל (Payload Too Large)
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-// זה חובה כדי ש-csurf יעבוד ולא יקריס את השרת עם שגיאת 500
 app.use(cookieParser(process.env.JWT_ACCESS_SECRET || 'temp-secret-key-for-dev'));
-
 app.use(mongoSanitize());
 
+// --- הגדרת CSRF ---
 const csrfProtection = csurf({
   cookie: {
     key: '_csrf',
     path: '/',
     httpOnly: true,
-    secure: true, // ב-Render חייב להיות true (בגלל HTTPS)
-    sameSite: 'none' // חובה! אחרת הדפדפן יחסום את הקוקי בין הדומיינים
+    secure: isProduction, 
+    sameSite: isProduction ? 'none' : 'lax'
   },
 });
 
-// --- נתיבים ציבוריים ---
+// נתיבים שפתוחים לפני CSRF
 app.use('/api/auth', authRoutes);
 
-// Endpoint לקבלת ה-CSRF Token
-app.get('/api/csrf-token', csrfProtection, (req, res) => {
+// --- הפעלת הגנת CSRF ---
+app.use(csrfProtection);
+
+// שליחת הטוקן לקליינט (חובה ל-Axios)
+app.use((req, res, next) => {
+  const token = req.csrfToken();
+  res.cookie('XSRF-TOKEN', token); 
+  next();
+});
+
+app.get('/api/csrf-token', (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
 });
 
-// --- הפעלת הגנת CSRF על כל הנתיבים מכאן ומטה ---
-app.use(csrfProtection);
+// --- נתיבים מוגנים (התיקון כאן!) ---
 
-// --- נתיבים מוגנים ---
-// ללא השורה הזו, תקבל 404 כשתנסה ליצור אימון
+// 1. תמיכה לאחור (עבור הדפים הישנים: Dashboard, Daily, וכו')
 app.use('/api/learn', requireAuth, learnRoutes);
+
+// 2. תמיכה בפיצ'ר החדש (Deep Drill שעובד עם v1)
+app.use('/api/v1/learn', requireAuth, learnRoutes);
+
 
 // טיפול בשגיאות 404
 app.use('*', (req, res) => {
@@ -84,7 +94,10 @@ app.use('*', (req, res) => {
 // טיפול בשגיאות גלובלי
 app.use((err, req, res, next) => {
   if (err.code === 'EBADCSRFTOKEN') {
-    return res.status(403).json({ message: 'Form has been tampered with (CSRF Invalid)' });
+    return res.status(403).json({ 
+        message: 'CSRF Token missing or invalid',
+        code: 'CSRF_ERROR'
+    });
   }
   console.error(err);
   res.status(500).json({ message: 'Internal Server Error' });

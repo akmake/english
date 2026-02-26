@@ -2,7 +2,7 @@ import { useState, Fragment } from "react";
 import { Link, NavLink } from "react-router-dom";
 import {
   Menu, X, LogOut, LayoutDashboard, Wrench, FileText, User, Landmark,
-  TrendingUp, Home,BookOpen, Settings, UserCircle, Briefcase, ChevronDown, Cpu 
+  TrendingUp, Home, BookOpen, Gamepad2, Settings, UserCircle,Brain, Briefcase, ChevronDown, Cpu 
 } from "lucide-react"; // הוספנו את Cpu לאייקונים
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -20,11 +20,12 @@ import {
 
 // --- Navigation Structure ---
 const navItems = [
-    { to: '/', label: 'בית', icon: Home, type: 'link' },
-    { to: '/dashboard', label: 'אימון יומי', icon: BookOpen, type: 'link', auth: true },
-    { to: '/simulation', label: 'סימולציה', icon: Cpu, type: 'link', auth: true },
+  { to: '/', label: 'בית', icon: Home, type: 'link' },
+  { to: '/dashboard', label: 'אימון יומי', icon: BookOpen, type: 'link', auth: true },
+  { to: '/simulation', label: 'סימולציה', icon: Cpu, type: 'link', auth: true },
+  { to: '/deep-drill', label: 'החפירה (מאגר אישי)', icon: Brain, type: 'link', auth: true },
+  { to: '/games', label: 'משחקים', icon: Gamepad2, type: 'link', auth: true },
 ];
-
 const getVisibleItems = (isAuthenticated, user) => {
     return navItems.filter(item => {
         if (item.auth && !isAuthenticated) return false;

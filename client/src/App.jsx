@@ -11,8 +11,8 @@ import DailyPage    from "@/pages/DailyPage";  // זה העמוד עם הכרט�
 import Dashboard    from "@/pages/Dashboard";  // זה העמוד עם המנעולים והימים
 import NotFoundPage from "@/pages/NotFoundPage";
 import SimulationPage from "@/pages/SimulationPage"; // 1. הוסף את הייבוא הזה
-
-
+import GamesPage from './pages/GamesPage';
+import DeepDrillPage from "@/pages/DeepDrillPage"; // תוסיף למעלה ב-Imports
 
 export default function App() {
   return (
@@ -25,6 +25,8 @@ export default function App() {
         {/* תוודא שהשורות האלו קיימות ונכונות: */}
         <Route path="dashboard" element={<Dashboard />} /> 
         <Route path="daily"     element={<DailyPage />} />
+        <Route path="games" element={<GamesPage />} />
+        <Route path="deep-drill" element={<DeepDrillPage />} />
         <Route path="simulation" element={<SimulationPage />} />
         <Route element={<ProtectedRoute />}>
            {/* עמודים מוגנים */}
