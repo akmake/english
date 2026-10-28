@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>המורה שלי לאנגלית</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="top">
+  <a href="#/home" class="brand">🎓 המורה שלי לאנגלית</a>
+  <nav>
+    <a href="#/help">❔ איך זה עובד</a>
+    <label title="הקול של המורה">🗣️
+      <select id="voice">
+        <option value="Kore">Kore (אישה)</option>
+        <option value="Aoede">Aoede (אישה)</option>
+        <option value="Puck">Puck (גבר)</option>
+        <option value="Charon">Charon (גבר)</option>
+        <option value="browser">קול הדפדפן (מיידי, רובוטי)</option>
+      </select>
+    </label>
+    <label class="speed" title="מהירות הדיבור של המורה">🔊
+      <select id="rate">
+        <option value="0.7">איטי מאוד</option>
+        <option value="0.85">איטי</option>
+        <option value="0.9">רגיל-איטי</option>
+        <option value="1">רגיל</option>
+      </select>
+    </label>
+  </nav>
+</header>
+<main id="app"><p class="muted center">טוען...</p></main>
+<div id="status" role="status" aria-live="polite"></div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>
