@@ -1,13 +1,12 @@
 import { UNITS, FREE_TALK } from './curriculum.js';
 import {
-  LEVELS, LEVEL_HE, PLACEMENT_WORDS, today, addReviewItem, gradeItem, dueKeys,
+  LEVELS, LEVEL_HE, PLACEMENT_WORDS, today, addDays, addReviewItem, gradeItem, dueKeys,
   bumpStreak, currentStreak, checkAnswer, hintOf, shuffle, vocabLevel, finalLevel,
 } from './learning.js';
 
 const app = document.getElementById('app');
 const statusEl = document.getElementById('status');
-const rateEl = document.getElementById('rate');
-const voiceEl = document.getElementById('voice');
+const tabbar = document.getElementById('tabbar');
 
 // ---------- Progress (saved on the server in bot/data/progress.json) ----------
 
@@ -52,7 +51,7 @@ window.addEventListener('pagehide', () => {
   if (saveTimer) { clearTimeout(saveTimer); putProgress(true); }
 });
 
-// ---------- Small helpers ----------
+// ---------- DOM helpers ----------
 
 function h(tag, props, ...kids) {
   const e = document.createElement(tag);
@@ -72,6 +71,45 @@ function mount(...nodes) {
   app.replaceChildren(...nodes.flat(Infinity).filter((n) => n != null && n !== false));
 }
 
+const ICONS = {
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  volume: '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/>',
+  mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  checkCircle: '<circle cx="12" cy="12" r="10"/><path d="m8.5 12 2.5 2.5 4.5-5"/>',
+  xCircle: '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/>',
+  flame: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4 2-6 .5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
+  home: '<path d="m3 10 9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/>',
+  repeat: '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
+  chat: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  settings: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
+  bulb: '<path d="M9 18h6M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/>',
+  lock: '<rect x="4" y="11" width="16" height="11" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  keyboard: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
+  play: '<path d="m7 4 13 8-13 8z" fill="currentColor"/>',
+  back: '<path d="M5 12h14M13 5l7 7-7 7"/>',
+  next: '<path d="M19 12H5M11 19l-7-7 7-7"/>',
+  chevron: '<path d="m15 18-6-6 6-6"/>',
+  book: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>',
+  target: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  send: '<path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/>',
+  sparkle: '<path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>',
+  help: '<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/>',
+  compass: '<circle cx="12" cy="12" r="10"/><path d="m16.2 7.8-2.1 6.3-6.3 2.1 2.1-6.3z"/>',
+  trash: '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>',
+  trophy: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>',
+};
+
+function icon(name, size = 22) {
+  const s = document.createElement('span');
+  s.className = 'ic';
+  s.setAttribute('aria-hidden', 'true');
+  s.innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`;
+  return s;
+}
+
 let statusTimer;
 function setStatus(msg, isError = false) {
   clearTimeout(statusTimer);
@@ -87,17 +125,14 @@ async function api(url, body) {
   return data;
 }
 
-function progressBar(i, n, label) {
-  return h('div', { class: 'progress' },
-    h('div', { class: 'bar' }, h('span', { style: `width:${Math.round((i / n) * 100)}%` })),
-    h('small', {}, `${label} ${i + 1} מתוך ${n}`));
-}
-
 function isUnlocked(i) {
   return P.profile.unlockAll || i === 0 || !!P.units[UNITS[i - 1].id]?.completed || !!P.units[UNITS[i].id]?.completed;
 }
 
-// ---------- Speech: listen (browser), speak (Gemini voice, browser fallback), pronunciation (Gemini) ----------
+const go = (hash) => { location.hash = hash; };
+const btn = (cls, label, onclick, ...extra) => h('button', { type: 'button', class: `btn ${cls}`, onclick }, ...extra, label);
+
+// ---------- Speech: listen (browser), speak (local Kokoro, browser fallback), pronunciation (Gemini) ----------
 
 let voices = [];
 if (window.speechSynthesis) {
@@ -106,35 +141,42 @@ if (window.speechSynthesis) {
   speechSynthesis.onvoiceschanged = loadVoices;
 }
 
-// Natural voice comes from the server (generated once per sentence, then cached on disk).
-const audioCache = new Map(); // "voice|text" -> Promise<object URL>
+// Natural voice: Kokoro on the local server, one sentence at a time, cached on disk.
+const audioCache = new Map(); // "voice|sentence" -> { url: Promise<object URL>, urgent, done }
 const prefetchQueue = [];
 let prefetching = 0;
 let player = null;
 let speakToken = 0;
 let fallbackNoticed = false;
 
-const voiceName = () => P.settings?.voice || 'Kore';
+const VOICE_IDS = ['af_heart', 'af_bella', 'am_michael', 'bf_emma', 'bm_george', 'browser'];
+const voiceName = () => (VOICE_IDS.includes(P.settings?.voice) ? P.settings.voice : 'af_heart');
 
-function fetchVoice(text) {
-  const key = `${voiceName()}|${text}`;
-  if (!audioCache.has(key)) {
-    const url = fetch('/api/tts', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice: voiceName() }),
-    }).then(async (res) => {
-      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'tts failed');
-      return URL.createObjectURL(await res.blob());
-    });
-    url.catch(() => audioCache.delete(key)); // let a later click retry
-    audioCache.set(key, url);
-  }
-  return audioCache.get(key);
+// Short pieces start playing sooner: the first sentence plays while the next one is generated.
+const splitSentences = (text) => String(text).match(/[^.!?]+[.!?]*/g)?.map((s) => s.trim()).filter(Boolean) || [];
+
+function fetchVoice(sentence, urgent = false) {
+  const key = `${voiceName()}|${sentence}`;
+  const hit = audioCache.get(key);
+  // a pending background request is re-sent as urgent so the server moves it to the front
+  if (hit && (hit.done || hit.urgent || !urgent)) return hit.url;
+  const entry = { urgent };
+  entry.url = fetch('/api/tts', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: sentence, voice: voiceName(), urgent }),
+  }).then(async (res) => {
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'tts failed');
+    entry.done = true;
+    return URL.createObjectURL(await res.blob());
+  });
+  entry.url.catch(() => audioCache.delete(key)); // let a later click retry
+  audioCache.set(key, entry);
+  return entry.url;
 }
 
-// Generate the next sentences in the background, two at a time, so they play instantly.
+// Generate upcoming sentences in the background so they play instantly.
 function prefetch(texts) {
   if (voiceName() === 'browser') return;
-  prefetchQueue.push(...texts.filter(Boolean));
+  prefetchQueue.push(...texts.filter(Boolean).flatMap(splitSentences));
   pumpPrefetch();
 }
 function pumpPrefetch() {
@@ -150,18 +192,33 @@ function stopSpeaking() {
   window.speechSynthesis?.cancel();
 }
 
+function playUrl(url) {
+  return new Promise((resolve, reject) => {
+    player = new Audio(url);
+    player.playbackRate = Number(P.settings?.rate) || 0.9;
+    player.onended = resolve;
+    player.onerror = () => reject(new Error('audio error'));
+    player.play().catch(reject);
+  });
+}
+
 async function speak(text) {
   if (!text) return;
   stopSpeaking();
   const token = speakToken;
   if (voiceName() !== 'browser') {
-    const loading = setTimeout(() => token === speakToken && setStatus('🔊 מכין את הקול...'), 400);
+    const loading = setTimeout(() => token === speakToken && setStatus('🔊 מכין את הקול...'), 600);
     try {
-      const url = await fetchVoice(text);
-      if (token !== speakToken) return;
-      player = new Audio(url);
-      player.playbackRate = Number(P.settings?.rate) || 0.9;
-      await player.play();
+      // request every sentence now (generated in order), play each as soon as it is ready
+      const urls = splitSentences(text).map((s) => fetchVoice(s, true));
+      for (const url of urls) {
+        const ready = await url;
+        clearTimeout(loading);
+        if (statusEl.textContent.startsWith('🔊')) setStatus('');
+        if (token !== speakToken) return;
+        await playUrl(ready);
+        if (token !== speakToken) return;
+      }
       return;
     } catch (e) {
       if (token !== speakToken || e.name === 'NotAllowedError' || e.name === 'AbortError') return;
@@ -188,48 +245,97 @@ function browserSpeak(text) {
   speechSynthesis.speak(u);
 }
 
-function speakBtn(text) {
-  return h('button', { type: 'button', class: 'icon', title: 'להשמיע', 'aria-label': 'להשמיע', onclick: () => speak(text) }, '🔊');
+function speakBtn(text, size = '') {
+  return h('button', {
+    type: 'button', class: `icon-btn ${size}`, title: 'להשמיע', 'aria-label': `להשמיע: ${text}`, onclick: () => speak(text),
+  }, icon('volume', size === 'lg' ? 28 : size === 'sm' ? 18 : 20));
 }
 
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-function listen(lang, btn) {
+// Tap to start, tap again to finish — only the learner ends the recording. A beginner pauses to
+// think mid-sentence; silence timers cut them off. Chrome also ends a session on its own after a
+// pause, so it is restarted and the text so far is kept.
+const MAX_RECORDING_MS = 2 * 60 * 1000;
+let activeRec = null; // { stop() } for the recording in progress
+
+function listen(lang, btnEl) {
   return new Promise((resolve, reject) => {
-    if (!SR) return reject(new Error('דיבור למיקרופון עובד רק ב-Chrome או Edge. אפשר לכתוב במקום.'));
+    if (!SR) return reject(new Error('דיבור למיקרופון עובד רק ב-Chrome או Edge. אפשר להקליד במקום.'));
     stopSpeaking();
-    const rec = new SR();
-    rec.lang = lang;
-    rec.interimResults = false;
-    let done = false;
-    const finish = (fn, value) => {
-      if (done) return;
-      done = true;
-      btn?.classList.remove('listening');
+    let finished = false;
+    let finalText = '';
+    let interim = '';
+    let failed = null;
+    let rec = null;
+    const prompt = lang === 'he-IL' ? 'דבר בעברית' : 'דבר באנגלית';
+    const show = () => setStatus(`🎤 ${(finalText + interim).trim() || `מקשיב... ${prompt}`} …  (לחץ שוב כשסיימת)`);
+
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(maxTimer);
+      activeRec = null;
+      btnEl?.classList.remove('listening');
       setStatus('');
-      fn(value);
+      const text = (finalText + interim).replace(/\s+/g, ' ').trim();
+      if (text) return resolve(text);
+      reject(new Error(failed === 'not-allowed' ? 'צריך לאשר גישה למיקרופון בדפדפן'
+        : failed ? `שגיאת מיקרופון: ${failed}` : 'לא שמעתי כלום, נסה שוב'));
     };
-    rec.onresult = (e) => finish(resolve, e.results[0][0].transcript);
-    rec.onerror = (e) => finish(reject, new Error(
-      e.error === 'no-speech' ? 'לא שמעתי כלום, נסה שוב'
-        : e.error === 'not-allowed' ? 'צריך לאשר גישה למיקרופון בדפדפן'
-          : `שגיאת מיקרופון: ${e.error}`));
-    rec.onend = () => finish(reject, new Error('לא שמעתי כלום, נסה שוב'));
-    btn?.classList.add('listening');
-    setStatus(lang === 'he-IL' ? '🎤 מקשיב... דבר בעברית' : '🎤 מקשיב... דבר באנגלית');
-    rec.start();
+
+    const startSession = () => {
+      rec = new SR();
+      rec.lang = lang;
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.onresult = (e) => {
+        interim = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          if (e.results[i].isFinal) finalText += `${e.results[i][0].transcript} `;
+          else interim += e.results[i][0].transcript;
+        }
+        show();
+      };
+      rec.onerror = (e) => { if (e.error !== 'no-speech' && e.error !== 'aborted') failed = e.error; };
+      rec.onend = () => {
+        if (finished) return;
+        // ended by the browser, not by the learner: keep what was said and listen on
+        finalText += interim ? `${interim} ` : '';
+        interim = '';
+        if (activeRec?.stopping || failed) return finish();
+        try { startSession(); } catch { finish(); }
+      };
+      rec.start();
+    };
+
+    activeRec = { stopping: false, stop() { this.stopping = true; rec?.stop(); }, abort() { finished = true; clearTimeout(maxTimer); rec?.abort(); } };
+    const maxTimer = setTimeout(() => activeRec?.stop(), MAX_RECORDING_MS);
+    btnEl?.classList.add('listening');
+    show();
+    startSession();
   });
+}
+
+// Mic button handler: the first tap starts listening, a second tap finishes.
+async function voiceInput(lang, btnEl, onText) {
+  if (activeRec) { activeRec.stop(); return; }
+  try {
+    onText(await listen(lang, btnEl));
+  } catch (e) {
+    setStatus(`⚠️ ${e.message}`, true);
+  }
 }
 
 let recorder = null;
 
-function pronounceBtn(target, onResult) {
-  const btn = h('button', { type: 'button', class: 'icon', title: 'חזור אחריי: בדיקת הגייה', 'aria-label': 'בדיקת הגייה' }, '🎙️');
-  btn.onclick = () => toggleRecord(target, btn, onResult);
-  return btn;
+function pronounceBtn(target, onResult, size = '') {
+  const b = h('button', { type: 'button', class: `icon-btn ${size}`, title: 'חזור אחריי: בדיקת הגייה', 'aria-label': 'בדיקת הגייה' }, icon('mic', size === 'sm' ? 18 : 20));
+  b.onclick = () => toggleRecord(target, b, onResult);
+  return b;
 }
 
-async function toggleRecord(target, btn, onResult) {
+async function toggleRecord(target, b, onResult) {
   if (recorder) { recorder.stop(); return; }
   if (!window.MediaRecorder || !navigator.mediaDevices) return setStatus('הקלטה עובדת רק ב-Chrome או Edge', true);
   let stream;
@@ -242,14 +348,16 @@ async function toggleRecord(target, btn, onResult) {
   const chunks = [];
   const rec = new MediaRecorder(stream);
   recorder = rec;
+  const idle = b.firstChild;
   rec.ondataavailable = (e) => chunks.push(e.data);
   const timer = setTimeout(() => rec.state === 'recording' && rec.stop(), 15000);
   rec.onstop = async () => {
     clearTimeout(timer);
     stream.getTracks().forEach((t) => t.stop());
     recorder = null;
-    btn.classList.remove('recording');
-    setStatus('בודק הגייה... ⏳');
+    b.classList.remove('recording');
+    b.replaceChildren(idle);
+    setStatus('בודק את ההגייה... ⏳');
     try {
       const audio = await toWavBase64(new Blob(chunks, { type: chunks[0]?.type }));
       onResult(pronunciationCard(await api('/api/pronounce', { audio, mimeType: 'audio/wav', target }), target));
@@ -258,8 +366,9 @@ async function toggleRecord(target, btn, onResult) {
       setStatus(`⚠️ ${e.message === 'EncodingError' || /decode/i.test(e.message) ? 'ההקלטה קצרה מדי, נסה שוב' : e.message}`, true);
     }
   };
-  btn.classList.add('recording');
-  setStatus(target ? `🔴 מקליט... תגיד: "${target}" ולחץ שוב על 🎙️ לסיום` : '🔴 מקליט... לחץ שוב על 🎙️ לסיום');
+  b.classList.add('recording');
+  b.replaceChildren(icon('stop', 16));
+  setStatus(target ? `🔴 מקליט... תגיד: "${target}" ולחץ שוב לסיום` : '🔴 מקליט... לחץ שוב לסיום');
   rec.start();
 }
 
@@ -288,40 +397,88 @@ async function toWavBase64(blob) {
   return btoa(bin);
 }
 
-function pronunciationCard(r, target) {
-  const cls = r.score >= 80 ? 'score-good' : r.score >= 50 ? 'score-mid' : 'score-bad';
-  return h('div', { class: 'msg bot' },
-    h('div', { class: 'pron-title' }, '🗣️ בדיקת הגייה: ', h('span', { class: cls }, `${r.score}/100`)),
-    target && h('div', { class: 'label' }, 'המשפט:'),
-    target && h('div', { class: 'en' }, speakBtn(target), h('span', {}, target)),
-    h('div', { class: 'label' }, 'מה שמעתי:'),
-    h('div', { class: 'en' }, r.heard),
-    (r.issues || []).map((x) => h('div', { class: 'issue' }, speakBtn(x.word), ' ', h('b', {}, x.word), h('div', { class: 'he' }, x.tip_he))),
-    r.summary_he && h('div', { class: 'he' }, `💡 ${r.summary_he}`));
+function pronunciationCard(r) {
+  const score = Number(r.score) || 0;
+  const color = score >= 80 ? 'var(--success)' : score >= 50 ? 'var(--warn)' : 'var(--danger)';
+  const title = r.speech_detected === false ? 'לא שמעתי דיבור' : score >= 80 ? 'מצוין!' : score >= 50 ? 'כמעט שם' : 'בוא ננסה שוב';
+  return h('div', { class: 'card pron' },
+    h('div', { class: 'pron-head' },
+      h('div', { class: 'ring', style: `--p:${score};--c:${color}`, role: 'img', 'aria-label': `ציון ${score} מתוך 100` }, h('b', {}, score)),
+      h('div', {}, h('div', { class: 'eyebrow' }, 'בדיקת הגייה'), h('div', { class: 'pron-title' }, title))),
+    r.heard && h('div', { class: 'pron-heard' }, h('span', { class: 'muted' }, 'מה ששמעתי: '), h('span', { class: 'en' }, r.heard)),
+    (r.issues || []).map((x) => h('div', { class: 'issue' },
+      speakBtn(x.word, 'sm'),
+      h('div', { class: 'grow' }, h('b', { class: 'en' }, x.word), h('div', { class: 'muted' }, x.tip_he)))),
+    r.summary_he && h('p', { class: 'small' }, r.summary_he));
 }
 
-// Text box + English microphone; speech goes straight to checking.
-function answerInput({ onSubmit, placeholder = 'כתוב באנגלית...' }) {
-  const input = h('input', { type: 'text', placeholder, dir: 'ltr', autocomplete: 'off', spellcheck: false, 'aria-label': 'התשובה שלך' });
-  const mic = h('button', { type: 'button', class: 'mic', title: 'להגיד באנגלית' }, '🎤 להגיד');
-  mic.onclick = async () => {
-    try {
-      const text = await listen('en-US', mic);
-      input.value = text;
-      onSubmit(text);
-    } catch (e) {
-      setStatus(`⚠️ ${e.message}`, true);
-    }
-  };
-  return h('form', {
-    class: 'answer',
+// Voice first (like Speak/Duolingo): a big mic, typing is the secondary path.
+// confirmVoice: show what was heard and wait for "send" (open answers that get graded once).
+function answerInput({ onSubmit, placeholder = 'כתוב באנגלית...', micLabel = 'לחץ, דבר, ולחץ שוב כשסיימת', confirmVoice = false, submitLabel = 'בדוק' }) {
+  const input = h('input', { type: 'text', class: 'text-input', placeholder, dir: 'ltr', autocomplete: 'off', 'aria-label': 'התשובה שלך' });
+  const heardNote = h('p', { class: 'muted small', hidden: true }, 'זה מה ששמעתי. אפשר לתקן, ואז ללחוץ על "שלח". או להקליט שוב.');
+  const form = h('form', {
+    class: 'type-row', hidden: !!SR,
     onsubmit: (e) => { e.preventDefault(); if (input.value.trim()) onSubmit(input.value.trim()); },
-  }, mic, input, h('button', { type: 'submit', class: 'primary' }, 'בדוק'));
+  }, input, h('button', { type: 'submit', class: 'btn btn-primary btn-sm' }, submitLabel));
+  const mic = h('button', { type: 'button', class: 'mic-big', 'aria-label': micLabel, disabled: !SR }, icon('mic', 32));
+  mic.onclick = () => voiceInput('en-US', mic, (text) => {
+    input.value = text;
+    if (!confirmVoice) return onSubmit(text);
+    form.hidden = false;
+    heardNote.hidden = false;
+  });
+  const toggleText = h('span', {}, 'להקליד במקום');
+  const toggle = h('button', { type: 'button', class: 'btn btn-ghost', hidden: !SR }, icon('keyboard', 18), toggleText);
+  toggle.onclick = () => {
+    form.hidden = !form.hidden;
+    toggleText.textContent = form.hidden ? 'להקליד במקום' : 'להסתיר מקלדת';
+    if (!form.hidden) input.focus();
+  };
+  return h('div', { class: 'answer-box' }, SR && mic, SR && h('div', { class: 'mic-label' }, micLabel), toggle, heardNote, form);
+}
+
+function focusTop({ onClose, progress, label }) {
+  const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100);
+  return h('div', { class: 'focus-top' },
+    h('button', { type: 'button', class: 'icon-btn', 'aria-label': 'יציאה', onclick: onClose }, icon('x')),
+    h('div', { class: 'bar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct) },
+      h('span', { style: `width:${Math.max(3, pct)}%` })),
+    label && h('span', { class: 'focus-label' }, label));
+}
+
+const dock = (...kids) => h('div', { class: 'dock' }, ...kids);
+const dockRow = (...kids) => h('div', { class: 'dock-row' }, ...kids);
+
+function sheet(kind, title, ...kids) {
+  return h('div', { class: `sheet ${kind}`, role: 'status' },
+    h('div', { class: 'sheet-title' }, icon(kind === 'ok' ? 'checkCircle' : kind === 'bad' ? 'xCircle' : 'eye', 24), title), ...kids);
+}
+
+function answerLine(text, pronSlot) {
+  return h('div', { class: 'answer-line' },
+    speakBtn(text, 'sm'),
+    pronSlot && pronounceBtn(text, (c) => pronSlot.replaceChildren(c), 'sm'),
+    h('span', { class: 'en' }, text));
+}
+
+// Bottom tabs are hidden while a lesson/review/placement is running (focus mode).
+const TABS = [['home', 'בית', 'home'], ['review', 'חזרה', 'repeat'], ['talk', 'שיחה', 'chat'], ['settings', 'הגדרות', 'settings']];
+function setChrome(tab) {
+  document.body.classList.toggle('focus', !tab);
+  for (const a of tabbar.querySelectorAll('.tab')) {
+    const on = a.dataset.tab === tab;
+    a.classList.toggle('active', on);
+    if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+  }
+  const due = dueKeys(P.review, today()).length;
+  const badge = tabbar.querySelector('.badge');
+  if (badge) { badge.textContent = due > 99 ? '99+' : String(due); badge.hidden = !due; }
 }
 
 // ---------- Conversation with the AI tutor (lesson mission or free talk) ----------
 
-function createChat({ mode, unit, onDone }) {
+function createChat({ mode, unit, onFinish }) {
   const opener = mode === 'mission' ? unit.mission.opener_en : FREE_TALK.opener_en;
   const history = [{ role: 'bot', text: opener }];
   let hint = mode === 'mission' ? unit.mission.hint_en : FREE_TALK.hint_en;
@@ -329,60 +486,70 @@ function createChat({ mode, unit, onDone }) {
   let doneShown = false;
 
   const list = h('div', { class: 'chat', 'aria-live': 'polite' });
-  const input = h('input', { type: 'text', placeholder: 'כתוב כאן, בעברית או באנגלית...', autocomplete: 'off', 'aria-label': 'הודעה' });
-  const micEn = h('button', { type: 'button', class: 'mic' }, '🎤 באנגלית');
-  const micHe = h('button', { type: 'button', class: 'mic he' }, '🎤 בעברית');
-  const hintBtn = h('button', { type: 'button', class: 'secondary' }, '💡 רמז');
-  const form = h('form', { class: 'answer' }, input, h('button', { type: 'submit', class: 'primary' }, 'שלח'));
-  const el = h('div', { class: 'chat-wrap' }, list, h('div', { class: 'composer' }, micEn, micHe, hintBtn, form));
+  const input = h('input', { type: 'text', class: 'text-input', placeholder: 'כתוב בעברית או באנגלית...', autocomplete: 'off', dir: 'auto', 'aria-label': 'הודעה' });
+  const form = h('form', { class: 'type-row', hidden: !!SR }, input, h('button', { type: 'submit', class: 'icon-btn lg', 'aria-label': 'שלח' }, icon('send', 22)));
+  const micEn = h('button', { type: 'button', class: 'mic-big small', 'aria-label': 'לדבר באנגלית', disabled: !SR }, icon('mic', 28));
+  const hintBtn = h('button', { type: 'button', class: 'side-btn' }, icon('bulb', 20), 'רמז');
+  const kbBtn = h('button', { type: 'button', class: 'side-btn' }, icon('keyboard', 20), 'מקלדת');
+  const heBtn = h('button', { type: 'button' }, 'דבר בעברית');
+  const composer = h('div', { class: 'composer' },
+    SR && h('div', { class: 'composer-main' }, hintBtn, micEn, kbBtn),
+    SR && h('div', { class: 'mic-label' }, 'לחץ, דבר באנגלית, ולחץ שוב כשסיימת · או ', heBtn),
+    form,
+    !SR && h('div', { class: 'helpers' }, hintBtn));
+  const el = h('div', { class: 'chat-wrap screen-body', style: 'padding-bottom:0' }, list, composer);
 
-  const scroll = () => list.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  const scroll = () => list.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   const add = (node) => { list.append(node); scroll(); return node; };
+  const tutorMsg = (...kids) => h('div', { class: 'msg tutor' }, h('div', { class: 'avatar' }, icon('sparkle', 16)), h('div', { class: 'bubble' }, ...kids));
 
-  function englishRow(label, text, cls = '') {
-    return [
-      h('div', { class: 'label' }, label),
-      h('div', { class: `en ${cls}` }, speakBtn(text), pronounceBtn(text, add), h('span', {}, text)),
-    ];
+  function enRow(text, tag = 'p') {
+    return h('div', { class: 'en-row' },
+      h(tag, { class: 'en' }, text),
+      h('div', { class: 'row-actions' }, speakBtn(text, 'sm'), pronounceBtn(text, add, 'sm')));
   }
 
   function addBot(r) {
-    add(h('div', { class: 'msg bot' },
-      r.say_it && englishRow('ככה אומרים את זה באנגלית:', r.say_it, 'say'),
-      r.correction && englishRow('תיקון קטן:', r.correction, 'fix'),
-      englishRow('המורה:', r.reply_en),
-      r.hebrew_help && h('div', { class: 'he' }, `💡 ${r.hebrew_help}`),
-      r.new_words?.length && h('div', { class: 'words' }, r.new_words.map((w) => h('span', { class: 'word' }, `${w.en} = ${w.he}`)))));
+    add(tutorMsg(
+      r.say_it && h('div', { class: 'block say' }, h('div', { class: 'label' }, 'ככה אומרים את זה באנגלית'), enRow(r.say_it)),
+      r.correction && h('div', { class: 'block fix' }, h('div', { class: 'label' }, 'תיקון קטן'), enRow(r.correction)),
+      enRow(r.reply_en),
+      r.hebrew_help && h('div', { class: 'he-help' }, icon('bulb', 16), h('span', {}, r.hebrew_help)),
+      r.new_words?.length && h('div', { class: 'words' }, r.new_words.map((w) => h('span', { class: 'word-chip' }, h('span', { class: 'en' }, w.en), ` · ${w.he}`)))));
   }
 
   async function send(text) {
     text = text.trim();
     if (!text || busy) return;
     busy = true;
-    const bubble = add(h('div', { class: 'msg user', dir: 'auto' }, text));
+    const bubble = add(h('div', { class: 'msg user' }, h('div', { class: 'bubble', dir: 'auto' }, text)));
+    const typing = add(h('div', { class: 'msg tutor typing', 'aria-label': 'המורה כותב' }, h('div', { class: 'avatar' }, icon('sparkle', 16)), h('div', { class: 'bubble' }, h('i'), h('i'), h('i'))));
     history.push({ role: 'user', text });
-    setStatus('המורה חושב... ⏳');
     try {
       const data = await api('/api/chat', { messages: history, mode, unitId: unit?.id });
+      typing.remove();
       history.push({ role: 'bot', text: data.reply_en });
       hint = data.hint_en || hint;
       addBot(data);
-      setStatus('');
       speak(data.reply_en);
       const day = today();
       if (data.correction) P.mistakes = [...(P.mistakes || []), { said: text, fixed: data.correction, day }].slice(-30);
       for (const w of data.new_words || []) addReviewItem(P.review, { en: w.en, he: w.he, type: 'word' }, day);
       P.streak = bumpStreak(P.streak, day);
       save();
-      if (data.mission_done && !doneShown) {
+      if (data.mission_done && !doneShown && onFinish) {
         doneShown = true;
-        add(h('div', { class: 'msg done' }, '✅ השלמת את המשימה! אפשר להמשיך לדבר, או ללחוץ "סיום המשימה".'));
-        onDone?.();
+        add(h('div', { class: 'card done-card' },
+          icon('trophy', 28), h('b', {}, 'השלמת את המשימה!'),
+          h('span', { class: 'small' }, 'אפשר להמשיך לדבר, או לסיים את השיעור.'),
+          btn('btn-success btn-block', 'לסיכום השיעור', onFinish)));
       }
     } catch (e) {
+      typing.remove();
       history.pop();
       bubble.remove();
       input.value = text;
+      form.hidden = false;
       setStatus(`⚠️ ${e.message}`, true);
     } finally {
       busy = false;
@@ -390,79 +557,101 @@ function createChat({ mode, unit, onDone }) {
   }
 
   form.onsubmit = (e) => { e.preventDefault(); const t = input.value; input.value = ''; send(t); };
-  micEn.onclick = async () => { try { send(await listen('en-US', micEn)); } catch (e) { setStatus(`⚠️ ${e.message}`, true); } };
-  micHe.onclick = async () => { try { send(await listen('he-IL', micHe)); } catch (e) { setStatus(`⚠️ ${e.message}`, true); } };
-  hintBtn.onclick = () => add(h('div', { class: 'msg hint' }, '💡 אפשר להגיד:', h('div', { class: 'en' }, speakBtn(hint), h('span', {}, hint))));
+  micEn.onclick = () => voiceInput('en-US', micEn, send);
+  heBtn.onclick = () => voiceInput('he-IL', micEn, send);
+  kbBtn.onclick = () => { form.hidden = !form.hidden; if (!form.hidden) input.focus(); };
+  hintBtn.onclick = () => add(tutorMsg(h('div', { class: 'label eyebrow' }, 'רמז: אפשר להגיד'), enRow(hint)));
 
   addBot({
     reply_en: opener,
-    hebrew_help: mode === 'free' ? 'אפשר לדבר איתי על כל נושא, בעברית או באנגלית. אם נתקעים, לוחצים 💡 רמז.' : '',
+    hebrew_help: mode === 'free' ? 'אפשר לדבר איתי על כל נושא, בעברית או באנגלית. נתקעת? לחץ על "רמז".' : '',
   });
   speak(opener);
   return { el };
 }
 
-// ---------- Screens ----------
+// ---------- Home ----------
 
-function bigLink(href, icon, title, sub) {
-  return h('a', { class: 'big-link', href }, h('span', { class: 'icon-big' }, icon), h('span', {}, h('b', {}, title), h('small', {}, sub)));
-}
+const DAY_LETTERS = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
 
-function stat(icon, value, label) {
-  return h('div', { class: 'stat' }, h('b', {}, `${icon} ${value}`), h('small', {}, label));
+function weekStrip(day) {
+  const active = new Set();
+  if (currentStreak(P.streak, day)) for (let k = 0; k < P.streak.count; k++) active.add(addDays(P.streak.lastDay, -k));
+  const days = Array.from({ length: 7 }, (_, i) => addDays(day, i - 6));
+  return h('div', { class: 'card week', 'aria-label': 'הפעילות השבוע' }, days.map((d) => {
+    const [y, m, dd] = d.split('-').map(Number);
+    return h('div', { class: `day${active.has(d) ? ' on' : ''}${d === day ? ' today' : ''}` },
+      h('span', { class: 'dot' }, icon('flame', 18)), DAY_LETTERS[new Date(y, m - 1, dd).getDay()]);
+  }));
 }
 
 function renderHome() {
+  setChrome('home');
   const day = today();
   const due = dueKeys(P.review, day).length;
   const nextIdx = UNITS.findIndex((u, i) => !P.units[u.id]?.completed && isUnlocked(i));
   const doneCount = UNITS.filter((u) => P.units[u.id]?.completed).length;
+  const streak = currentStreak(P.streak, day);
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'בוקר טוב' : hour < 18 ? 'צהריים טובים' : 'ערב טוב';
   const level = P.profile.level;
 
-  const todayCards = [];
+  let hero;
   if (!P.profile.placementDone) {
-    todayCards.push(bigLink('#/placement', '🧭', 'מתחילים: אבחון קצר', 'כ-5 דקות. נבין מאיפה אתה מתחיל.'));
+    hero = h('section', { class: 'hero' },
+      h('span', { class: 'eyebrow' }, 'צעד ראשון · כ-5 דקות'),
+      h('h2', {}, 'בוא נכיר ונמצא את הרמה שלך'),
+      h('p', {}, 'כמה מילים ומשפט קצר בדיבור. אין ציון ואין "נכשלת".'),
+      btn('btn-block', 'להתחיל', () => go('#/placement')));
+  } else if (nextIdx >= 0) {
+    const u = UNITS[nextIdx];
+    hero = h('section', { class: 'hero' },
+      h('span', { class: 'eyebrow' }, `השיעור הבא · ${nextIdx + 1} מתוך ${UNITS.length}`),
+      h('h2', {}, u.title_he),
+      h('p', {}, `בסוף תוכל ${u.goal_he}.`),
+      h('div', { class: 'meta' }, h('span', {}, 'כ-15 דק׳'), h('span', {}, `${u.words.length} מילים`), h('span', {}, 'שיחה עם המורה')),
+      btn('btn-block', doneCount ? 'המשך ללמוד' : 'התחל שיעור', () => go(`#/unit/${u.id}`)));
   } else {
-    if (due) todayCards.push(bigLink('#/review', '🔁', `חזרה: ${due} מילים ומשפטים`, `כ-${Math.max(2, Math.ceil(due / 4))} דקות. ככה זוכרים לאורך זמן.`));
-    if (nextIdx >= 0) {
-      const u = UNITS[nextIdx];
-      todayCards.push(bigLink(`#/unit/${u.id}`, '📘', `שיעור ${nextIdx + 1}: ${u.title_he}`, `כ-15 דקות. בסוף תוכל ${u.goal_he}.`));
-    } else {
-      todayCards.push(h('div', { class: 'card done' }, '🎉 סיימת את כל 10 היחידות של רמה A1! המשך עם חזרה ושיחה חופשית. השלב הבא בדרך.'));
-    }
+    hero = h('section', { class: 'hero done' },
+      h('span', { class: 'eyebrow' }, 'רמה A1 הושלמה'),
+      h('h2', {}, 'סיימת את כל 10 השיעורים! 🎉'),
+      h('p', {}, 'המשך עם חזרה יומית ושיחה חופשית. השלב הבא בדרך.'),
+      btn('btn-block', 'לשיחה חופשית', () => go('#/talk')));
   }
 
-  mount(
-    h('h1', {}, 'שלום! 👋'),
-    h('div', { class: 'stats' },
-      stat('🔥', currentStreak(P.streak, day), 'ימים ברצף'),
-      stat('📘', `${doneCount}/${UNITS.length}`, 'שיעורים'),
-      stat('🧠', Object.keys(P.review).length, 'מילים ומשפטים'),
-      level && stat('📊', level, LEVEL_HE[level])),
-    h('h2', {}, 'מה עושים היום'),
-    todayCards,
-    h('h2', {}, 'המסלול: רמה A1'),
-    h('ol', { class: 'units' }, UNITS.map((u, i) => {
+  mount(h('section', { class: 'screen-body' },
+    h('header', { class: 'home-top' },
+      h('div', {}, h('div', { class: 'eyebrow' }, greeting), h('h1', {}, 'מה לומדים היום?')),
+      h('div', { class: 'pills' },
+        h('span', { class: 'pill flame', title: 'ימים ברצף' }, icon('flame', 18), streak),
+        level && h('span', { class: 'pill', title: LEVEL_HE[level] }, level))),
+    weekStrip(day),
+    hero,
+    P.profile.placementDone && due > 0 && h('a', { class: 'card card-tight link-card', href: '#/review' },
+      h('span', { class: 'tile-icon orange' }, icon('repeat')),
+      h('span', { class: 'grow' }, h('b', {}, 'חזרה יומית'), h('span', { class: 'muted small' }, `${due} מילים ומשפטים · כ-${Math.max(2, Math.ceil(due / 4))} דק׳`)),
+      h('span', { class: 'go' }, 'התחל')),
+    h('div', { class: 'section-head' }, h('h2', {}, 'המסלול שלך'), h('span', { class: 'muted small' }, `רמה A1 · ${doneCount}/${UNITS.length}`)),
+    h('ol', { class: 'path' }, UNITS.map((u, i) => {
       const done = P.units[u.id]?.completed;
-      const label = [h('span', { class: 'num' }, done ? '✅' : `${i + 1}.`), h('span', {}, u.title_he)];
-      return h('li', {}, isUnlocked(i)
-        ? h('a', { href: `#/unit/${u.id}` }, label)
-        : h('span', { class: 'locked', title: 'נפתח אחרי השיעור הקודם' }, h('span', { class: 'num' }, '🔒'), h('span', {}, u.title_he)));
+      const open = isUnlocked(i);
+      const current = i === nextIdx && P.profile.placementDone;
+      const state = done ? 'done' : current ? 'current' : open ? 'open' : 'locked';
+      const inner = [
+        h('span', { class: 't' }, h('b', {}, u.title_he), h('small', {}, u.goal_he)),
+        current ? h('span', { class: 'go' }, 'התחל') : !open ? icon('lock', 18) : null,
+      ];
+      return h('li', { class: state },
+        h('span', { class: 'node' }, done ? icon('check', 20) : i + 1),
+        open ? h('a', { class: 'step', href: `#/unit/${u.id}` }, inner) : h('span', { class: 'step', 'aria-disabled': 'true', title: 'נפתח אחרי השיעור הקודם' }, inner));
     })),
-    h('h2', {}, 'עוד'),
-    bigLink('#/talk', '💬', 'שיחה חופשית', 'מדברים על מה שבא לך. המורה מתקן ועוזר.'),
-    h('div', { class: 'footer-links' },
-      P.profile.placementDone && h('a', { href: '#/placement' }, 'לעשות שוב את האבחון'),
-      h('button', { class: 'link', onclick: resetProgress }, 'איפוס כל ההתקדמות')),
-  );
+    h('a', { class: 'card card-tight link-card', href: '#/talk' },
+      h('span', { class: 'tile-icon blue' }, icon('chat')),
+      h('span', { class: 'grow' }, h('b', {}, 'שיחה חופשית'), h('span', { class: 'muted small' }, 'מדברים על מה שבא לך. המורה מתקן ועוזר.')),
+      h('span', { class: 'chev' }, icon('chevron', 20)))));
 }
 
-function resetProgress() {
-  if (!confirm('בטוח? כל ההתקדמות, המחברת והרצף יימחקו.')) return;
-  P = { ...emptyProgress(), settings: P.settings };
-  save();
-  location.hash = '#/placement';
-}
+// ---------- Placement ----------
 
 const GOALS = ['טיולים בחו"ל', 'עבודה', 'לימודים', 'סרטים וסדרות', 'שיחות עם אנשים', 'ביטחון עצמי'];
 const LEVEL_EXPLAIN = {
@@ -474,12 +663,20 @@ const LEVEL_EXPLAIN = {
 };
 
 function renderPlacement() {
+  setChrome(null);
   const items = ['A1', 'A2', 'B1']
     .flatMap((band) => shuffle(PLACEMENT_WORDS.filter((w) => w.band === band)))
     .map((w) => ({ ...w, options: shuffle([w.he, ...shuffle(PLACEMENT_WORDS.filter((x) => x !== w)).slice(0, 3).map((x) => x.he)]) }));
   const S = { step: 'goals', goals: new Set(P.profile.goals || []), i: 0, results: [], result: null };
   prefetch([...items.map((w) => w.en), 'Tell me about yourself.']);
-  const draw = () => { mount(view()); window.scrollTo(0, 0); };
+  const total = items.length + 2;
+  const progress = () => (S.step === 'goals' ? 0 : S.step === 'vocab' ? (1 + S.i) / total : S.step === 'result' ? 1 : (total - 1) / total);
+  const draw = () => {
+    const [content, actions = []] = view();
+    mount(S.step !== 'result' && focusTop({ onClose: () => go('#/home'), progress: progress() }),
+      h('section', { class: 'screen-body' }, content), actions.length > 0 && dock(actions));
+    window.scrollTo(0, 0);
+  };
 
   function finish(vocab, speaking, feedback) {
     const level = finalLevel(vocab, speaking);
@@ -494,6 +691,7 @@ function renderPlacement() {
   }
 
   async function submitSpeaking(text) {
+    S.answer = text;
     const vocab = vocabLevel(S.results);
     S.step = 'checking';
     draw();
@@ -508,18 +706,18 @@ function renderPlacement() {
 
   function view() {
     if (S.step === 'goals') {
-      return [
-        h('h1', {}, 'בוא נכיר 🧭'),
-        h('p', {}, 'כמה דקות, ונדע מאיפה מתחילים. אין ציון ואין "נכשלת". זה רק כדי להתאים לך את המסלול.'),
-        h('h3', {}, 'בשביל מה אתה רוצה אנגלית? (אפשר לבחור כמה)'),
-        h('div', { class: 'chips' }, GOALS.map((g) => h('button', {
-          type: 'button', class: `chip${S.goals.has(g) ? ' on' : ''}`, 'aria-pressed': String(S.goals.has(g)),
+      return [[
+        h('div', { class: 'eyebrow' }, 'בוא נכיר'),
+        h('h1', {}, 'בשביל מה אתה רוצה אנגלית?'),
+        h('p', { class: 'muted' }, 'אפשר לבחור כמה. המורה ישתמש בזה כדי להתאים לך את השיחות.'),
+        h('div', { class: 'goal-grid' }, GOALS.map((g) => h('button', {
+          type: 'button', class: `goal-opt${S.goals.has(g) ? ' on' : ''}`, 'aria-pressed': String(S.goals.has(g)),
           onclick: () => { S.goals.has(g) ? S.goals.delete(g) : S.goals.add(g); draw(); },
-        }, g))),
-        h('div', { class: 'actions' },
-          h('button', { class: 'primary', onclick: () => { S.step = 'vocab'; draw(); } }, 'המשך ←'),
-          h('button', { class: 'secondary', onclick: () => finish('A0', 'A0', 'מתחילים מאפס, וזה בדיוק המקום הנכון. נלך צעד אחרי צעד.') }, 'דלג, אני מתחיל מאפס')),
-      ];
+        }, g, h('span', { class: 'check' }, icon('check', 14))))),
+      ], [
+        btn('btn-primary btn-block', 'המשך', () => { S.step = 'vocab'; draw(); }),
+        btn('btn-ghost', 'אני מתחיל מאפס, דלג', () => finish('A0', 'A0', 'מתחילים מאפס, וזה בדיוק המקום הנכון. נלך צעד אחרי צעד.')),
+      ]];
     }
     if (S.step === 'vocab') {
       const it = items[S.i];
@@ -529,42 +727,51 @@ function renderPlacement() {
         else S.step = 'speak';
         draw();
       };
-      return [
-        progressBar(S.i, items.length, 'מילה'),
-        h('p', { class: 'muted' }, 'מה פירוש המילה? אם לא יודעים, לוחצים "לא יודע". זה עוזר לא פחות מתשובה נכונה.'),
-        h('div', { class: 'card' }, h('div', { class: 'big-en' }, it.en), h('div', { class: 'row-btns' }, speakBtn(it.en))),
+      return [[
+        h('div', { class: 'eyebrow' }, `מילה ${S.i + 1} מתוך ${items.length}`),
+        h('h1', {}, 'מה פירוש המילה?'),
+        h('div', { class: 'card word-card' }, speakBtn(it.en, 'lg'), h('div', { class: 'word en' }, it.en)),
         h('div', { class: 'options' },
-          it.options.map((o) => h('button', { class: 'option', onclick: () => answer(o === it.he) }, o)),
-          h('button', { class: 'option dont-know', onclick: () => answer(false) }, 'לא יודע 🤷')),
-      ];
+          it.options.map((o) => h('button', { type: 'button', class: 'option', onclick: () => answer(o === it.he) }, o)),
+          h('button', { type: 'button', class: 'option dont-know', onclick: () => answer(false) }, 'לא יודע, וזה בסדר')),
+      ]];
     }
     if (S.step === 'speak') {
-      return [
-        h('h1', {}, 'עכשיו קצת לדבר 🎤'),
-        h('p', {}, 'ספר על עצמך באנגלית: איך קוראים לך, מאיפה אתה, מה אתה עושה. גם משפט אחד זה מצוין.'),
-        h('div', { class: 'card' }, h('div', { class: 'answer-line' }, speakBtn('Tell me about yourself.'), h('b', {}, 'Tell me about yourself.'))),
-        answerInput({ onSubmit: submitSpeaking, placeholder: 'My name is...' }),
-        h('button', { class: 'secondary', onclick: () => submitSpeaking('') }, 'אני עוד לא יכול, דלג'),
-      ];
+      return [[
+        h('div', { class: 'eyebrow' }, 'כמעט סיימנו'),
+        h('h1', {}, 'ספר קצת על עצמך באנגלית'),
+        h('p', { class: 'muted' }, 'איך קוראים לך, מאיפה אתה, מה אתה עושה. גם משפט אחד זה מצוין.'),
+        h('div', { class: 'card card-tight' }, answerLine('Tell me about yourself.')),
+        answerInput({ onSubmit: submitSpeaking, placeholder: 'My name is...', confirmVoice: true, submitLabel: 'שלח' }),
+      ], [btn('btn-ghost', 'אני עוד לא יכול, דלג', () => submitSpeaking(''))]];
     }
-    if (S.step === 'checking') return [h('div', { class: 'card center' }, 'בודק... ⏳')];
+    if (S.step === 'checking') {
+      return [[h('div', { class: 'center-screen' }, h('span', { class: 'spinner' }), h('p', { class: 'muted' }, 'בודק את הרמה שלך...'))]];
+    }
     const { level, feedback } = S.result;
-    return [
-      h('h1', {}, `הרמה שלך: ${LEVEL_HE[level]} (${level})`),
-      h('p', {}, LEVEL_EXPLAIN[level]),
-      feedback && h('div', { class: 'card' }, `💬 ${feedback}`),
-      h('h3', {}, 'מה עכשיו?'),
-      h('p', {}, P.profile.unlockAll
-        ? 'אתה כבר מעבר לבסיס של A1, אז כל השיעורים פתוחים לך. כדאי לעבור עליהם מהר כחזרה. השלב הבא יביא תוכן ברמה שלך.'
-        : 'מתחילים משיעור 1. כל שיעור לוקח כ-15 דקות, ובסופו נפתח השיעור הבא. הכי חשוב: קצת כל יום.'),
-      h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => { location.hash = '#/home'; } }, 'בוא נתחיל ←')),
-    ];
+    return [[
+      h('div', { class: 'center-screen' },
+        h('div', { class: 'result-badge level' }, level),
+        h('div', { class: 'eyebrow' }, 'הרמה שלך'),
+        h('h1', {}, LEVEL_HE[level]),
+        h('p', { class: 'muted' }, LEVEL_EXPLAIN[level])),
+      feedback && h('div', { class: 'card', style: 'display:flex;flex-direction:column;gap:10px' },
+        S.answer && h('div', {}, h('div', { class: 'eyebrow' }, 'מה שאמרת'), h('p', { class: 'en', style: 'text-align:left' }, `"${S.answer}"`)),
+        h('p', { class: 'quote' }, feedback)),
+      h('div', { class: 'card goal' },
+        h('span', { class: 'tile-icon blue' }, icon('compass')),
+        h('div', {}, h('b', {}, 'מה עכשיו?'), h('p', { class: 'muted small' }, P.profile.unlockAll
+          ? 'אתה כבר מעבר לבסיס של A1, אז כל השיעורים פתוחים לך. כדאי לעבור עליהם מהר כחזרה.'
+          : 'מתחילים משיעור 1. כל שיעור כ-15 דקות, ובסופו נפתח הבא. הכי חשוב: קצת כל יום.'))),
+    ], [btn('btn-primary btn-block', 'בוא נתחיל', () => go('#/home'))]];
   }
 
   draw();
 }
 
-const STEPS = [['intro', 'פתיחה'], ['words', 'מילים'], ['phrases', 'משפטים'], ['quiz', 'בדיקה'], ['practice', 'תרגול'], ['mission', 'משימה'], ['summary', 'סיכום']];
+// ---------- Lesson ----------
+
+const STEPS = ['intro', 'words', 'phrases', 'quiz', 'practice', 'mission', 'summary'];
 
 function buildQuiz(unit) {
   const meaning = shuffle(unit.words).slice(0, 5).map((w) => ({
@@ -579,45 +786,73 @@ function buildQuiz(unit) {
 }
 
 function renderUnit(id) {
+  setChrome(null);
   const idx = UNITS.findIndex((u) => u.id === id);
   const unit = UNITS[idx];
-  if (!unit || !isUnlocked(idx)) { location.hash = '#/home'; return; }
+  if (!unit || !isUnlocked(idx)) { go('#/home'); return; }
 
   const L = { step: 0, i: 0, quiz: buildQuiz(unit), quizRight: 0, practiceRight: 0, answered: null, result: null, tried: false, hint: false, missed: new Set(), missionDone: false, chat: null, saved: false };
   prefetch([
     ...unit.words.flatMap((w) => [w.en, w.ex_en]), ...unit.phrases.map((p) => p.en),
     ...unit.practice.map((p) => p.en), unit.mission.opener_en,
   ]);
-  const draw = () => mount(head(), body());
-  const next = () => { Object.assign(L, { step: L.step + 1, i: 0, answered: null, result: null, tried: false, hint: false }); draw(); window.scrollTo(0, 0); };
-  const advance = (count) => { if (L.i < count - 1) { L.i++; draw(); } else next(); };
+  const counts = { words: unit.words.length, phrases: unit.phrases.length, quiz: L.quiz.length, practice: unit.practice.length };
+  const stepName = () => STEPS[L.step];
+  const progress = () => (L.step + (counts[stepName()] ? L.i / counts[stepName()] : 0)) / (STEPS.length - 1);
 
-  function head() {
-    return h('div', { class: 'lesson-head' },
-      h('a', { href: '#/home', class: 'back' }, '→ יציאה (ההתקדמות בשיעור לא נשמרת)'),
-      h('div', { class: 'lesson-title' }, `שיעור ${idx + 1}: ${unit.title_he}`),
-      h('ol', { class: 'steps' }, STEPS.map(([, label], n) => h('li', { class: n < L.step ? 'done' : n === L.step ? 'now' : '' }, label))));
+  const close = () => {
+    if (L.step > 0 && stepName() !== 'summary' && !confirm('לצאת מהשיעור? ההתקדמות בשיעור הזה לא תישמר.')) return;
+    go('#/home');
+  };
+  const draw = () => {
+    const [content, actions = []] = body();
+    mount(stepName() !== 'summary' && focusTop({ onClose: close, progress: progress(), label: counts[stepName()] ? `${L.i + 1}/${counts[stepName()]}` : '' }),
+      h('section', { class: 'screen-body', style: stepName() === 'mission' ? 'padding-bottom:0' : null }, content),
+      actions.length > 0 && dock(actions));
+  };
+  const next = () => { Object.assign(L, { step: L.step + 1, i: 0, answered: null, result: null, tried: false, hint: false }); draw(); window.scrollTo(0, 0); };
+  const advance = (count) => { if (L.i < count - 1) { L.i++; draw(); window.scrollTo(0, 0); } else next(); };
+
+  function intro() {
+    const part = (ic, color, text) => h('li', {}, h('span', { class: `tile-icon ${color}` }, icon(ic, 20)), h('span', {}, text));
+    return [[
+      h('div', { class: 'center-screen', style: 'padding-bottom:0' },
+        h('div', { class: 'intro-badge' }, icon('book', 38)),
+        h('div', { class: 'eyebrow' }, `שיעור ${idx + 1} · רמה A1`),
+        h('h1', {}, unit.title_he),
+        h('p', { class: 'muted en' }, unit.title_en)),
+      h('div', { class: 'card goal' },
+        h('span', { class: 'tile-icon green' }, icon('target')),
+        h('div', {}, h('b', {}, 'בסוף השיעור תוכל'), h('p', { class: 'muted' }, `${unit.goal_he}.`))),
+      h('div', { class: 'card' }, h('ul', { class: 'parts' },
+        part('book', 'blue', `${unit.words.length} מילים חדשות עם דוגמאות`),
+        part('chat', 'blue', `${unit.phrases.length} משפטים מוכנים לשימוש`),
+        part('volume', 'blue', 'בדיקה קצרה, כולל הבנה בשמיעה'),
+        part('mic', 'orange', 'תרגול: להגיד בעצמך באנגלית'),
+        part('sparkle', 'green', 'משימה: שיחה אמיתית עם המורה'))),
+    ], [btn('btn-primary btn-block', 'בוא נתחיל', next)]];
   }
 
-  function cards(items, withExample, label) {
+  function cards(items, isWords) {
     const it = items[L.i];
     const pron = h('div');
     setTimeout(() => speak(it.en), 150);
-    return [
-      progressBar(L.i, items.length, label),
-      h('p', { class: 'muted' }, 'שמע 🔊, חזור בקול, ולחץ 🎙️ כדי לבדוק את ההגייה.'),
-      h('div', { class: 'card' },
-        h('div', { class: 'big-en' }, it.en),
-        h('div', { class: 'row-btns' }, speakBtn(it.en), pronounceBtn(it.en, (c) => pron.replaceChildren(c))),
-        h('div', { class: 'big-he' }, it.he),
-        withExample && h('div', { class: 'example' },
-          h('div', { dir: 'ltr' }, speakBtn(it.ex_en), ' ', it.ex_en),
-          h('div', { class: 'muted' }, it.ex_he))),
+    return [[
+      h('div', { class: 'eyebrow' }, isWords ? 'מילה חדשה' : 'משפט שימושי'),
+      h('div', { class: 'card word-card' },
+        speakBtn(it.en, 'lg'),
+        h('div', { class: `${isWords ? 'word' : 'phrase'} en` }, it.en),
+        h('div', { class: 'translation' }, it.he),
+        isWords && h('div', { class: 'example' },
+          speakBtn(it.ex_en, 'sm'),
+          h('div', { class: 'grow' }, h('div', { class: 'en' }, it.ex_en), h('div', {}, it.ex_he)))),
+      h('div', { class: 'repeat-row' },
+        pronounceBtn(it.en, (c) => pron.replaceChildren(c)),
+        h('div', {}, h('b', {}, 'חזור אחריי בקול'), h('div', { class: 'muted small' }, 'לחץ, תגיד, ולחץ שוב. תקבל ציון וטיפים.'))),
       pron,
-      h('div', { class: 'actions' },
-        L.i > 0 && h('button', { class: 'secondary', onclick: () => { L.i--; draw(); } }, '→ הקודם'),
-        h('button', { class: 'primary', onclick: () => advance(items.length) }, L.i < items.length - 1 ? 'הבא ←' : 'סיימתי, הלאה ←')),
-    ];
+    ], [dockRow(
+      L.i > 0 && h('button', { type: 'button', class: 'icon-btn lg', 'aria-label': 'הקודם', onclick: () => { L.i--; draw(); } }, icon('back', 24)),
+      btn('btn-primary', L.i < items.length - 1 ? 'המשך' : 'סיימתי, הלאה', () => advance(items.length)))]];
   }
 
   function quiz() {
@@ -625,14 +860,15 @@ function renderUnit(id) {
     const listenQ = q.kind === 'listen';
     if (listenQ && !L.answered) setTimeout(() => speak(q.en), 200);
     const right = L.answered === q.answer;
-    return [
-      progressBar(L.i, L.quiz.length, 'שאלה'),
-      h('p', { class: 'muted' }, listenQ ? 'הקשב: מה פירוש המשפט? (אפשר לשמוע שוב)' : 'איך אומרים את זה באנגלית?'),
-      h('div', { class: 'card' }, listenQ
-        ? h('div', { class: 'row-btns' }, h('button', { class: 'primary', onclick: () => speak(q.en) }, '🔊 השמע שוב'))
-        : h('div', { class: 'big-he' }, q.prompt)),
-      h('div', { class: 'options', dir: listenQ ? 'rtl' : 'ltr' }, q.options.map((o) => h('button', {
-        class: `option${L.answered ? (o === q.answer ? ' right' : o === L.answered ? ' wrong' : '') : ''}`,
+    return [[
+      h('div', { class: 'eyebrow' }, 'בדיקה'),
+      h('h1', {}, listenQ ? 'מה פירוש מה ששמעת?' : 'איך אומרים את זה באנגלית?'),
+      listenQ
+        ? h('div', { class: 'card word-card' }, h('button', { type: 'button', class: 'mic-big', 'aria-label': 'השמע שוב', onclick: () => speak(q.en) }, icon('volume', 34)), h('div', { class: 'muted small' }, 'לחץ כדי לשמוע שוב'))
+        : h('div', { class: 'card prompt-he' }, q.prompt),
+      h('div', { class: 'options' }, q.options.map((o) => h('button', {
+        type: 'button',
+        class: `option${listenQ ? '' : ' en'}${L.answered ? (o === q.answer ? ' right' : o === L.answered ? ' wrong' : ' faded') : ''}`,
         disabled: !!L.answered,
         onclick: () => {
           L.answered = o;
@@ -641,11 +877,12 @@ function renderUnit(id) {
           draw();
         },
       }, o))),
-      L.answered && h('div', { class: `feedback ${right ? 'ok' : 'bad'}` },
-        right ? '✅ נכון!' : `❌ התשובה הנכונה: ${q.answer}`,
-        h('div', { class: 'answer-line' }, speakBtn(q.en), q.en)),
-      L.answered && h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => { L.answered = null; advance(L.quiz.length); } }, 'הבא ←')),
-    ];
+    ], L.answered ? [
+      sheet(right ? 'ok' : 'bad', right ? 'נכון!' : 'לא בדיוק',
+        !right && listenQ && h('p', {}, `התשובה הנכונה: ${q.answer}`),
+        answerLine(q.en)),
+      btn(`${right ? 'btn-success' : 'btn-danger'} btn-block`, 'המשך', () => { L.answered = null; advance(L.quiz.length); }),
+    ] : []];
   }
 
   function practice() {
@@ -661,41 +898,46 @@ function renderUnit(id) {
       L.result = { correct, text };
       draw();
     };
-    return [
-      progressBar(L.i, unit.practice.length, 'משפט'),
-      h('p', { class: 'muted' }, 'איך אומרים את זה באנגלית? אפשר להגיד במיקרופון או לכתוב.'),
-      h('div', { class: 'card' }, h('div', { class: 'big-he' }, p.he)),
-      !L.result?.correct && answerInput({ onSubmit }),
-      !L.result && h('div', { class: 'actions' },
-        h('button', { class: 'secondary', onclick: () => { L.hint = true; draw(); } }, '💡 רמז'),
+    const r = L.result;
+    return [[
+      h('div', { class: 'eyebrow' }, 'תרגול דיבור'),
+      h('h1', {}, 'איך אומרים את זה באנגלית?'),
+      h('div', { class: 'card prompt-he' }, p.he),
+      !r && answerInput({ onSubmit }),
+      !r && L.hint && h('div', { class: 'hint en' }, hintOf(p.en)),
+      !r && h('div', { class: 'helpers' },
+        h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => { L.hint = true; draw(); } }, icon('bulb', 18), 'רמז'),
         h('button', {
-          class: 'secondary',
+          type: 'button', class: 'btn btn-ghost',
           onclick: () => {
             if (!L.tried) { L.tried = true; L.missed.add(p.en); }
             L.result = { correct: false, shown: true };
             draw();
           },
-        }, 'הראה תשובה')),
-      L.hint && !L.result && h('div', { class: 'hint' }, hintOf(p.en)),
-      L.result && h('div', { class: `feedback ${L.result.correct ? 'ok' : 'bad'}` },
-        L.result.correct ? '✅ מצוין!' : L.result.shown ? 'התשובה:' : `❌ עוד לא. אמרת: "${L.result.text}". התשובה:`,
-        h('div', { class: 'answer-line' }, speakBtn(p.en), pronounceBtn(p.en, (c) => pron.replaceChildren(c)), p.en),
-        !L.result.correct && h('div', { class: 'muted' }, 'שמע, חזור בקול, ונסה שוב למעלה. או המשך הלאה.')),
+        }, icon('eye', 18), 'הראה תשובה')),
       pron,
-      L.result && h('div', { class: 'actions' },
-        h('button', { class: 'primary', onclick: () => { Object.assign(L, { result: null, tried: false, hint: false }); advance(unit.practice.length); } }, 'הבא ←')),
-    ];
+    ], r ? [
+      sheet(r.correct ? 'ok' : r.shown ? 'info' : 'bad', r.correct ? 'מצוין!' : r.shown ? 'התשובה' : 'עוד לא',
+        !r.correct && !r.shown && h('p', {}, 'אמרת: ', h('span', { class: 'en' }, `"${r.text}"`)),
+        answerLine(p.en, pron),
+        !r.correct && h('p', { class: 'small' }, 'שמע, חזור בקול, ונסה שוב.')),
+      dockRow(
+        !r.correct && btn('btn-secondary', 'לנסות שוב', () => { L.result = null; draw(); }),
+        btn(r.correct ? 'btn-success' : 'btn-primary', 'המשך', () => { Object.assign(L, { result: null, tried: false, hint: false }); advance(unit.practice.length); })),
+    ] : []];
   }
 
   function mission() {
-    if (!L.chat) L.chat = createChat({ mode: 'mission', unit, onDone: () => { L.missionDone = true; } });
-    return [
-      h('div', { class: 'card task' },
-        h('b', {}, '🎯 המשימה: '), unit.mission.task_he,
-        h('div', { class: 'muted' }, 'דבר בקול או כתוב. מותר לערבב עברית. נתקעת? לחץ 💡 רמז.')),
+    if (!L.chat) L.chat = createChat({ mode: 'mission', unit, onFinish: () => { L.missionDone = true; next(); } });
+    return [[
+      h('div', { class: 'card card-tight task' },
+        h('span', { class: 'tile-icon green' }, icon('target', 20)),
+        h('div', { class: 'grow' },
+          h('div', { class: 'eyebrow' }, 'המשימה שלך'),
+          h('p', {}, unit.mission.task_he),
+          h('button', { type: 'button', class: 'btn btn-ghost', style: 'padding:0;min-height:36px', onclick: next }, 'סיימתי, לסיכום'))),
       L.chat.el,
-      h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: next }, 'סיום המשימה ←')),
-    ];
+    ]];
   }
 
   function summary() {
@@ -712,56 +954,36 @@ function renderUnit(id) {
       save();
     }
     const nextUnit = UNITS[idx + 1];
-    return [
-      h('h1', {}, '🎉 כל הכבוד! סיימת את השיעור'),
-      h('div', { class: 'card done' }, `עכשיו אתה יכול ${unit.goal_he}.`),
+    const stat = (ic, value, label) => h('div', { class: 'stat' }, icon(ic, 20), h('b', {}, value), h('small', {}, label));
+    return [[
+      h('div', { class: 'center-screen', style: 'padding-bottom:0' },
+        h('div', { class: 'result-badge success' }, icon('check', 44)),
+        h('h1', {}, 'כל הכבוד! סיימת את השיעור'),
+        h('p', { class: 'muted' }, `עכשיו אתה יכול ${unit.goal_he}.`)),
       h('div', { class: 'stats' },
-        stat('❓', `${L.quizRight}/${L.quiz.length}`, 'בבדיקה'),
-        stat('🗣️', `${L.practiceRight}/${unit.practice.length}`, 'בתרגול, בניסיון ראשון'),
-        stat('🎯', L.missionDone ? 'הושלמה' : 'חלקית', 'משימה')),
+        stat('volume', `${L.quizRight}/${L.quiz.length}`, 'בבדיקה'),
+        stat('mic', `${L.practiceRight}/${unit.practice.length}`, 'בתרגול'),
+        stat('sparkle', L.missionDone ? '✓' : '—', 'משימה')),
       L.missed.size > 0 && h('div', { class: 'card' },
-        h('b', {}, 'שווה לחזור על אלה:'),
-        h('ul', {}, [...L.missed].map((en) => h('li', { dir: 'ltr' }, speakBtn(en), ' ', en)))),
-      h('p', {}, 'כל המילים והמשפטים של השיעור נכנסו למחברת החזרה. הם יחזרו אליך מחר, ואחר כך בהפרשים הולכים וגדלים. ככה זה נשאר בזיכרון.'),
-      h('div', { class: 'actions' },
-        h('button', { class: 'primary', onclick: () => { location.hash = '#/home'; } }, 'למסך הבית ←'),
-        nextUnit && h('button', { class: 'secondary', onclick: () => { location.hash = `#/unit/${nextUnit.id}`; } }, 'יש לי כוח, לשיעור הבא')),
-    ];
+        h('b', {}, 'שווה לחזור על אלה'),
+        h('div', { class: 'chips', style: 'margin-top:10px' }, [...L.missed].map((en) => h('button', { type: 'button', class: 'chip', onclick: () => speak(en) }, icon('volume', 16), h('span', { class: 'en' }, en))))),
+      h('p', { class: 'muted small' }, 'כל המילים והמשפטים של השיעור נכנסו למחברת החזרה. הם יחזרו אליך מחר, ואחר כך בהפרשים הולכים וגדלים.'),
+    ], [
+      btn('btn-primary btn-block', 'סיום', () => go('#/home')),
+      nextUnit && btn('btn-ghost', 'יש לי כוח, לשיעור הבא', () => go(`#/unit/${nextUnit.id}`)),
+    ]];
   }
 
-  function body() {
-    switch (STEPS[L.step][0]) {
-      case 'intro':
-        return [h('div', { class: 'card' },
-          h('h1', {}, unit.title_he),
-          h('div', { class: 'muted', dir: 'ltr' }, unit.title_en),
-          h('h3', {}, 'בסוף השיעור תוכל:'),
-          h('p', {}, `${unit.goal_he}.`),
-          h('h3', {}, 'מה יהיה בשיעור (כ-15 דקות):'),
-          h('ul', {},
-            h('li', {}, `${unit.words.length} מילים חדשות עם דוגמאות`),
-            h('li', {}, `${unit.phrases.length} משפטים מוכנים לשימוש`),
-            h('li', {}, 'בדיקה קצרה: לזהות ולהבין בשמיעה'),
-            h('li', {}, 'תרגול: להגיד בעצמך באנגלית'),
-            h('li', {}, 'משימה: שיחה אמיתית עם המורה'))),
-        h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: next }, 'מוכן? בוא נתחיל ←'))];
-      case 'words': return cards(unit.words, true, 'מילה');
-      case 'phrases': return cards(unit.phrases, false, 'משפט');
-      case 'quiz': return quiz();
-      case 'practice': return practice();
-      case 'mission': return mission();
-      default: return summary();
-    }
-  }
-
+  const body = () => ({ intro, words: () => cards(unit.words, true), phrases: () => cards(unit.phrases, false), quiz, practice, mission, summary })[stepName()]();
   draw();
 }
+
+// ---------- Review ----------
 
 function renderReview() {
   const day = today();
   const R = { queue: dueKeys(P.review, day).slice(0, 20), i: 0, result: null, graded: new Set(), requeued: new Set(), right: 0, finished: false };
   prefetch(R.queue.map((k) => P.review[k].en));
-  const draw = () => mount(view());
 
   function grade(key, correct) {
     if (!R.graded.has(key)) {
@@ -773,105 +995,161 @@ function renderReview() {
     // a missed item comes back once more at the end of this session
     if (!correct && !R.requeued.has(key)) { R.requeued.add(key); R.queue.push(key); }
   }
-  const nextCard = () => { R.i++; R.result = null; draw(); };
+  const nextCard = () => { R.i++; R.result = null; draw(); window.scrollTo(0, 0); };
 
-  function view() {
+  function draw() {
     if (!R.queue.length) {
-      return [h('h1', {}, 'אין מה לחזור היום 🎉'), h('p', {}, 'כל מה שלמדת עדיין טרי. נתראה מחר.'),
-        h('button', { class: 'primary', onclick: () => { location.hash = '#/home'; } }, 'למסך הבית')];
+      setChrome('review');
+      const total = Object.keys(P.review).length;
+      return mount(h('section', { class: 'screen-body' },
+        h('h1', {}, 'חזרה'),
+        h('div', { class: 'center-screen' },
+          h('div', { class: 'result-badge success' }, icon('check', 44)),
+          h('h1', {}, total ? 'אין מה לחזור היום' : 'המחברת עוד ריקה'),
+          h('p', { class: 'muted' }, total
+            ? `יש לך ${total} מילים ומשפטים במחברת, וכולם עדיין טריים. נתראה מחר.`
+            : 'אחרי השיעור הראשון, המילים והמשפטים יחזרו אליך כאן בזמן הנכון.'),
+          btn('btn-primary', total ? 'למסך הבית' : 'לשיעור הראשון', () => go('#/home')))));
     }
+    setChrome(null);
     if (R.i >= R.queue.length) {
       if (!R.finished) { R.finished = true; P.streak = bumpStreak(P.streak, day); save(); }
-      return [
-        h('h1', {}, '✅ סיימת את החזרה'),
-        h('p', {}, `חזרת על ${R.graded.size} פריטים וידעת ${R.right} מהם בפעם הראשונה.`),
-        h('p', { class: 'muted' }, 'מה שידעת יחזור בעוד כמה ימים. מה שלא ידעת יחזור כבר מחר.'),
-        h('button', { class: 'primary', onclick: () => { location.hash = '#/home'; } }, 'למסך הבית ←'),
-      ];
+      return mount(h('section', { class: 'screen-body' },
+        h('div', { class: 'center-screen' },
+          h('div', { class: 'result-badge success' }, icon('check', 44)),
+          h('h1', {}, 'סיימת את החזרה'),
+          h('p', { class: 'muted' }, `חזרת על ${R.graded.size} פריטים וידעת ${R.right} מהם בפעם הראשונה.`),
+          h('p', { class: 'muted small' }, 'מה שידעת יחזור בעוד כמה ימים. מה שלא ידעת יחזור כבר מחר.'))),
+      dock(btn('btn-primary btn-block', 'למסך הבית', () => go('#/home'))));
     }
     const key = R.queue[R.i];
     const item = P.review[key];
     const pron = h('div');
+    const r = R.result;
     const onSubmit = (text) => {
       const { correct } = checkAnswer(text, [item.en]);
       R.result = { correct, text };
       grade(key, correct);
       draw();
     };
-    return [
-      h('h1', {}, '🔁 חזרה'),
-      progressBar(R.i, R.queue.length, 'פריט'),
-      h('p', { class: 'muted' }, 'איך אומרים את זה באנגלית? תגיד בקול או כתוב. לא בטוח? לחץ "הצג תשובה".'),
-      h('div', { class: 'card' }, h('div', { class: 'big-he' }, item.he), h('div', { class: 'muted center' }, item.type === 'word' ? 'מילה' : 'משפט')),
-      !R.result && answerInput({ onSubmit }),
-      !R.result && h('div', { class: 'actions' }, h('button', { class: 'secondary', onclick: () => { R.result = { revealed: true }; draw(); } }, 'הצג תשובה')),
-      R.result && h('div', { class: `feedback ${R.result.correct ? 'ok' : R.result.revealed ? '' : 'bad'}` },
-        R.result.correct ? '✅ נכון!' : R.result.revealed ? 'התשובה:' : `❌ אמרת: "${R.result.text}". התשובה:`,
-        h('div', { class: 'answer-line' }, speakBtn(item.en), pronounceBtn(item.en, (c) => pron.replaceChildren(c)), item.en)),
-      pron,
-      R.result?.revealed && h('div', { class: 'actions' },
-        h('button', { class: 'primary', onclick: () => { grade(key, true); nextCard(); } }, 'ידעתי ✅'),
-        h('button', { class: 'secondary', onclick: () => { grade(key, false); nextCard(); } }, 'לא ידעתי ❌')),
-      R.result && !R.result.revealed && h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: nextCard }, 'הבא ←')),
-    ];
+    mount(
+      focusTop({ onClose: () => go('#/home'), progress: R.i / R.queue.length, label: `${R.i + 1}/${R.queue.length}` }),
+      h('section', { class: 'screen-body' },
+        h('div', { class: 'eyebrow' }, `חזרה · ${item.type === 'word' ? 'מילה' : 'משפט'}`),
+        h('h1', {}, 'איך אומרים את זה באנגלית?'),
+        h('div', { class: 'card prompt-he' }, item.he),
+        !r && answerInput({ onSubmit }),
+        !r && h('div', { class: 'helpers' }, h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => { R.result = { revealed: true }; draw(); } }, icon('eye', 18), 'הצג תשובה')),
+        pron),
+      r && dock(
+        sheet(r.correct ? 'ok' : r.revealed ? 'info' : 'bad', r.correct ? 'נכון!' : r.revealed ? 'התשובה' : 'לא בדיוק',
+          !r.correct && !r.revealed && h('p', {}, 'אמרת: ', h('span', { class: 'en' }, `"${r.text}"`)),
+          answerLine(item.en, pron)),
+        r.revealed
+          ? dockRow(btn('btn-success', 'ידעתי', () => { grade(key, true); nextCard(); }), btn('btn-secondary', 'לא ידעתי', () => { grade(key, false); nextCard(); }))
+          : btn(`${r.correct ? 'btn-success' : 'btn-danger'} btn-block`, 'המשך', nextCard)));
   }
 
   draw();
 }
 
+// ---------- Free talk, settings, help ----------
+
 function renderTalk() {
+  setChrome('talk');
   const chat = createChat({ mode: 'free' });
-  mount(
-    h('h1', {}, '💬 שיחה חופשית'),
-    h('p', { class: 'muted' }, 'מדברים על מה שבא לך. המורה מתקן בעדינות, ומילים חדשות נכנסות למחברת החזרה.'),
-    chat.el);
+  mount(h('section', { class: 'screen-body', style: 'padding-bottom:0;gap:12px' },
+    h('div', {}, h('h1', {}, 'שיחה חופשית'), h('p', { class: 'muted small' }, 'מדברים על מה שבא לך. תיקונים ומילים חדשות נכנסים למחברת החזרה.')),
+    chat.el));
+}
+
+const VOICE_OPTIONS = [
+  ['af_heart', 'Heart', 'אישה, מבטא אמריקאי. הכי טבעי'],
+  ['af_bella', 'Bella', 'אישה, מבטא אמריקאי'],
+  ['am_michael', 'Michael', 'גבר, מבטא אמריקאי'],
+  ['bf_emma', 'Emma', 'אישה, מבטא בריטי'],
+  ['bm_george', 'George', 'גבר, מבטא בריטי'],
+  ['browser', 'קול הדפדפן', 'גיבוי. רובוטי'],
+];
+const RATES = [['0.7', 'איטי מאוד'], ['0.85', 'איטי'], ['0.9', 'רגיל-איטי'], ['1', 'רגיל']];
+
+function renderSettings() {
+  setChrome('settings');
+  const draw = () => mount(h('section', { class: 'screen-body' },
+    h('h1', {}, 'הגדרות'),
+    h('h2', {}, 'הקול של המורה'),
+    h('div', { class: 'card list', style: 'padding:0' }, VOICE_OPTIONS.map(([id, name, desc]) => h('button', {
+      type: 'button', class: `list-row${voiceName() === id ? ' on' : ''}`, role: 'radio', 'aria-checked': String(voiceName() === id),
+      onclick: () => {
+        P.settings = { ...P.settings, voice: id };
+        save();
+        draw();
+        speak("Hi! I'm your English teacher. Nice to meet you.");
+      },
+    }, h('span', { class: 'radio' }), h('span', { class: 'grow' }, h('b', { class: 'en' }, name), h('div', { class: 'muted small' }, desc))))),
+    h('h2', {}, 'מהירות דיבור'),
+    h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'מהירות דיבור' }, RATES.map(([v, label]) => h('button', {
+      type: 'button', class: String(P.settings?.rate ?? 0.9) === v ? 'on' : '', role: 'radio', 'aria-checked': String(String(P.settings?.rate ?? 0.9) === v),
+      onclick: () => { P.settings = { ...P.settings, rate: Number(v) }; save(); draw(); speak('This is my speaking speed.'); },
+    }, label))),
+    h('h2', {}, 'עוד'),
+    h('div', { class: 'card list', style: 'padding:0' },
+      h('a', { class: 'list-row', href: '#/help' }, icon('help'), h('span', { class: 'grow' }, 'איך זה עובד'), icon('chevron', 18)),
+      h('a', { class: 'list-row', href: '#/placement' }, icon('compass'), h('span', { class: 'grow' }, P.profile.placementDone ? 'לעשות שוב את האבחון' : 'לעשות את האבחון'), icon('chevron', 18)),
+      h('button', { type: 'button', class: 'list-row danger-link', onclick: resetProgress }, icon('trash'), h('span', { class: 'grow' }, 'איפוס כל ההתקדמות'))),
+  ));
+  draw();
+}
+
+function resetProgress() {
+  if (!confirm('בטוח? כל ההתקדמות, המחברת והרצף יימחקו.')) return;
+  P = { ...emptyProgress(), settings: P.settings };
+  save();
+  go('#/placement');
 }
 
 function renderHelp() {
+  setChrome('settings');
   const li = (...c) => h('li', {}, ...c);
-  mount(
-    h('h1', {}, '❔ איך זה עובד'),
-    h('div', { class: 'card help' },
-      h('h3', {}, 'השגרה המומלצת: 15-20 דקות ביום'),
-      h('ol', {},
-        li('נכנסים למסך הבית ועושים קודם את ', h('b', {}, 'החזרה'), ' (אם יש).'),
-        li('אחר כך ', h('b', {}, 'שיעור אחד'), '. אחד ביום זה מצוין. עדיף קצת כל יום מהרבה פעם בשבוע.'),
+  const section = (ic, title, ...kids) => h('div', { class: 'card' },
+    h('div', { class: 'row', style: 'margin-bottom:10px' }, h('span', { class: 'tile-icon blue' }, icon(ic, 20)), h('h2', {}, title)), ...kids);
+  mount(h('section', { class: 'screen-body' },
+    h('div', { class: 'row' }, h('a', { class: 'icon-btn', href: '#/settings', 'aria-label': 'חזרה להגדרות' }, icon('back')), h('h1', {}, 'איך זה עובד')),
+    section('flame', 'השגרה המומלצת: 15-20 דקות ביום',
+      h('ol', { class: 'help-list' },
+        li('קודם ', h('b', {}, 'החזרה היומית'), ' (אם יש).'),
+        li('אחר כך ', h('b', {}, 'שיעור אחד'), '. עדיף קצת כל יום מהרבה פעם בשבוע.'),
         li('יש עוד כוח? ', h('b', {}, 'שיחה חופשית'), ' עם המורה.'))),
-    h('div', { class: 'card help' },
-      h('h3', {}, 'מה יש בכל שיעור'),
-      h('ol', {},
+    section('book', 'מה יש בכל שיעור',
+      h('ol', { class: 'help-list' },
         li(h('b', {}, 'מילים ומשפטים: '), 'שומעים, חוזרים בקול ובודקים הגייה.'),
         li(h('b', {}, 'בדיקה: '), 'לזהות מילים ולהבין משפטים בשמיעה.'),
         li(h('b', {}, 'תרגול: '), 'רואים משפט בעברית ואומרים אותו באנגלית.'),
         li(h('b', {}, 'משימה: '), 'שיחה אמיתית עם המורה, למשל להזמין בבית קפה.'),
         li(h('b', {}, 'סיכום: '), 'כל מה שלמדת נכנס למחברת החזרה.'))),
-    h('div', { class: 'card help' },
-      h('h3', {}, 'הכפתורים'),
-      h('ul', {},
-        li('🔊 משמיע את המילה או המשפט. את המהירות משנים למעלה.'),
-        li('🎙️ ', h('b', {}, 'בדיקת הגייה: '), 'לוחצים, אומרים, ולוחצים שוב. מקבלים ציון וטיפים בעברית.'),
-        li('🎤 מדברים במקום לכתוב. באנגלית או בעברית.'),
-        li('💡 רמז, כשנתקעים.'))),
-    h('div', { class: 'card help' },
-      h('h3', {}, 'איך עובדת החזרה'),
-      h('p', {}, 'כל מילה ומשפט חוזרים אליך בזמן הנכון: אחרי יום, אחרי 3 ימים, אחרי שבוע, ואחר כך פחות ופחות. אם לא ידעת, הם חוזרים כבר מחר. ככה הם עוברים לזיכרון ארוך-טווח.')),
-    h('div', { class: 'card help' },
-      h('h3', {}, 'חשוב לדעת'),
-      h('ul', {},
+    section('mic', 'הכפתורים',
+      h('ul', { class: 'help-list' },
+        li(h('b', {}, 'רמקול: '), 'משמיע. את הקול והמהירות משנים בהגדרות.'),
+        li(h('b', {}, 'מיקרופון קטן: '), 'בדיקת הגייה. לוחצים, אומרים, ולוחצים שוב.'),
+        li(h('b', {}, 'מיקרופון גדול: '), 'עונים בדיבור. אפשר גם להקליד.'),
+        li(h('b', {}, 'רמז: '), 'כשנתקעים.'))),
+    section('repeat', 'איך עובדת החזרה',
+      h('p', {}, 'כל מילה ומשפט חוזרים אליך בזמן הנכון: אחרי יום, אחרי 3 ימים, אחרי שבוע, ואחר כך פחות ופחות. אם לא ידעת, הם חוזרים כבר מחר.')),
+    section('help', 'חשוב לדעת',
+      h('ul', { class: 'help-list' },
         li('המיקרופון עובד ב-Chrome או Edge. בפעם הראשונה צריך לאשר גישה.'),
-        li('בדיקת ההגייה נעשית על ידי AI. היא טובה, אבל לא מושלמת. תתייחס אליה כאל מאמן, לא כאל ציון.'),
-        li('ההקלטות והשיחות נשלחות ל-Google Gemini לניתוח. ההתקדמות נשמרת רק אצלך במחשב, בקובץ bot/data/progress.json.'))),
-    h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => { location.hash = '#/home'; } }, 'למסך הבית ←')),
-  );
+        li('בדיקת ההגייה נעשית על ידי AI. היא מאמן טוב, לא ציון מדויק.'),
+        li('השיחות ובדיקות ההגייה נשלחות ל-Google Gemini. הקול של המורה נוצר אצלך במחשב, וההתקדמות נשמרת רק אצלך.')))));
 }
 
 // ---------- Routing ----------
 
-const ROUTES = { home: renderHome, placement: renderPlacement, unit: renderUnit, review: renderReview, talk: renderTalk, help: renderHelp };
+const ROUTES = { home: renderHome, placement: renderPlacement, unit: renderUnit, review: renderReview, talk: renderTalk, settings: renderSettings, help: renderHelp };
 
 function route() {
   stopSpeaking();
   prefetchQueue.length = 0;
+  if (activeRec) { activeRec.abort(); activeRec = null; }
   if (recorder) {
     // leaving the screen mid-recording: discard it instead of sending it for a check
     recorder.onstop = null;
@@ -886,20 +1164,10 @@ function route() {
 }
 
 (async function init() {
+  tabbar.replaceChildren(...TABS.map(([id, label, ic]) => h('a', { href: `#/${id}`, class: 'tab', 'data-tab': id },
+    icon(ic, 24), h('span', {}, label), id === 'review' && h('span', { class: 'badge', hidden: true }))));
   await loadProgress();
-  rateEl.value = String(P.settings?.rate ?? 0.9);
-  rateEl.onchange = () => {
-    P.settings = { ...P.settings, rate: Number(rateEl.value) };
-    save();
-    speak('This is my speaking speed.');
-  };
-  voiceEl.value = voiceName();
-  voiceEl.onchange = () => {
-    P.settings = { ...P.settings, voice: voiceEl.value };
-    save();
-    speak("Hi! I'm your English teacher. Nice to meet you.");
-  };
   window.addEventListener('hashchange', route);
-  if (!location.hash && loaded && !P.profile.placementDone) location.hash = '#/placement';
+  if (!location.hash && loaded && !P.profile.placementDone) go('#/placement');
   else route();
 })();

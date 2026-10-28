@@ -86,7 +86,7 @@ Output fields:
 - "mission_done": see above.`;
 }
 
-const CHAT_SCHEMA = {
+export const CHAT_SCHEMA = {
   type: 'OBJECT',
   properties: {
     reply_en: { type: 'STRING' },
@@ -179,38 +179,51 @@ They were asked "Tell me about yourself" and answered below (often a speech-reco
 // so only one message pays for discovering it (the free key sometimes hangs without an error).
 const ATTEMPT_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 15000;
 const COOLDOWN_MS = 5 * 60 * 1000;
+const QUOTA_COOLDOWN_MS = 60 * 60 * 1000; // an exhausted daily quota will not come back in 5 minutes
+const HANG_COOLDOWN_MS = 30 * 60 * 1000; // measured: the free key sometimes hangs with no answer at all
 const coolingUntil = new Map();
+export const resetCooldowns = () => coolingUntil.clear(); // tests start each case with fresh keys
 
-async function postGemini(model, key, payload, thinking) {
-  const generationConfig = { ...payload.generationConfig, ...(thinking ? { thinkingConfig: { thinkingLevel: thinking } } : {}) };
+// Conversation needs speed. Measured on the same prompts: flash-lite answers in ~1.3s vs ~3.5s for
+// gemini-3.8-flash, with the same corrections (past tense, he likes/doesn't, Hebrew -> English).
+const CHAT_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', MODEL];
+// flash-lite normally answers in ~1.3s: after 2.5s the next key/model is tried instead of waiting
+// (only the last attempt gets the full timeout, so the conversation never fails just for being slow)
+const CHAT_TIMEOUT_MS = 2500;
+
+async function postGemini(model, key, payload, thinking, timeoutMs = ATTEMPT_TIMEOUT_MS) {
+  // lite models answer directly; the thinking setting is only for the full models
+  const level = model.includes('lite') ? null : thinking;
+  const generationConfig = { ...payload.generationConfig, ...(level ? { thinkingConfig: { thinkingLevel: level } } : {}) };
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({ ...payload, generationConfig }),
-    signal: AbortSignal.timeout(ATTEMPT_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const data = await res.json();
   // a fallback model may not support the thinking setting: retry it without
-  if (res.status === 400 && thinking && /thinking/i.test(data?.error?.message || '')) return postGemini(model, key, payload, null);
+  if (res.status === 400 && level && /thinking/i.test(data?.error?.message || '')) return postGemini(model, key, payload, null, timeoutMs);
   return { res, data };
 }
 
-// thinking: 'low' for fast conversational turns (~2s instead of ~4.5s); null = model default
-async function callGemini({ system, contents, schema, temperature = 0.7, thinking = null }) {
+// thinking: 'low' for fast turns on the full models; null = model default
+async function callGemini({ system, contents, schema, temperature = 0.7, thinking = null, models, timeoutMs }) {
   const data = await geminiRequest({
-    models: [MODEL, ...FALLBACK_MODELS.filter((m) => m !== MODEL)],
+    models: models || [MODEL, ...FALLBACK_MODELS.filter((m) => m !== MODEL)],
     payload: {
       systemInstruction: { parts: [{ text: system }] },
       contents,
       generationConfig: { responseMimeType: 'application/json', responseSchema: schema, temperature },
     },
     thinking,
+    timeoutMs,
   });
   return JSON.parse(data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') || '{}');
 }
 
 // Returns Gemini's raw response. Tries the best model with every key before a weaker model.
-async function geminiRequest({ models, payload, thinking = null }) {
+async function geminiRequest({ models, payload, thinking = null, timeoutMs }) {
   // Free key first; the paid key is spent only when the free one fails
   const keys = [process.env.GEMINI_API_KEY, process.env.GEMINI_API_KEY_PAID].filter(Boolean);
   if (!keys.length) throw Object.assign(new Error('חסר GEMINI_API_KEY בקובץ bot/.env'), { status: 500 });
@@ -223,14 +236,16 @@ async function geminiRequest({ models, payload, thinking = null }) {
     let res;
     let data;
     try {
-      ({ res, data } = await postGemini(model, key, payload, thinking));
+      const last = i === attempts.length - 1;
+      ({ res, data } = await postGemini(model, key, payload, thinking, last ? ATTEMPT_TIMEOUT_MS : timeoutMs));
     } catch (err) {
       res = { ok: false, status: 504 }; // timeout or network error
       data = { error: { message: err.name } };
     }
     if (res.ok) return data;
     const busy = [429, 503, 504].includes(res.status);
-    if (busy) coolingUntil.set(label, Date.now() + COOLDOWN_MS);
+    const quotaGone = res.status === 429 && /quota/i.test(data?.error?.message || '');
+    if (busy) coolingUntil.set(label, Date.now() + (quotaGone ? QUOTA_COOLDOWN_MS : res.status === 504 ? HANG_COOLDOWN_MS : COOLDOWN_MS));
     const retryable = busy || res.status === 401 || res.status === 403;
     if (retryable && i < attempts.length - 1) {
       console.warn(`${label} failed (${res.status}), trying ${attempts[i + 1].label}`);
@@ -241,51 +256,71 @@ async function geminiRequest({ models, payload, thinking = null }) {
   }
 }
 
-// ---- Natural voice (Gemini speech), cached on disk: lesson sentences are generated once ----
+// ---- Voice: Kokoro (open source, Apache-2.0) running locally — free, offline, no network wait.
+// Measured on this machine: model loads in ~0.6s once downloaded, a short sentence takes ~0.8s.
+// Every sentence is cached on disk, so lesson sentences are generated only once.
 
-export const VOICES = ['Kore', 'Aoede', 'Puck', 'Charon'];
-const TTS_MODELS = ['gemini-3.8-flash-tts', 'gemini-3.1-flash-tts-preview', 'gemini-2.5-flash-preview-tts'];
+export const VOICES = ['af_heart', 'af_bella', 'am_michael', 'bf_emma', 'bm_george'];
+const KOKORO_MODEL = 'onnx-community/Kokoro-82M-v1.0-ONNX';
 const TTS_DIR = path.join(DATA_DIR, 'tts');
-const ttsInFlight = new Map();
 
-function toWav(pcm, rate) {
-  const h = Buffer.alloc(44);
-  h.write('RIFF', 0); h.writeUInt32LE(36 + pcm.length, 4); h.write('WAVEfmt ', 8); h.writeUInt32LE(16, 16);
-  h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22); h.writeUInt32LE(rate, 24); h.writeUInt32LE(rate * 2, 28);
-  h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34); h.write('data', 36); h.writeUInt32LE(pcm.length, 40);
-  return Buffer.concat([h, pcm]);
+let kokoro = null;
+function loadKokoro() {
+  if (!kokoro) {
+    // imported lazily: the model runtime is heavy and tests never need it
+    kokoro = import('kokoro-js').then(({ KokoroTTS }) => KokoroTTS.from_pretrained(KOKORO_MODEL, { dtype: 'q8', device: 'cpu' }));
+    kokoro.catch(() => { kokoro = null; });
+  }
+  return kokoro;
 }
 
-async function tts({ text = '', voice = VOICES[0] }) {
+let synthesize = async (text, voice) => Buffer.from((await (await loadKokoro()).generate(text, { voice })).toWav());
+export function setSynthesizer(fn) { synthesize = fn; } // tests replace the model
+
+// One sentence at a time (parallel runs only fight over the CPU). A sentence the learner is waiting
+// to hear ("urgent") jumps ahead of background prefetching, so a click never waits behind a lesson.
+const ttsQueue = { urgent: [], later: [] };
+const ttsJobs = new Map(); // cache file -> queued/running job
+let ttsBusy = false;
+
+async function pumpTts() {
+  if (ttsBusy) return;
+  const job = ttsQueue.urgent.shift() || ttsQueue.later.shift();
+  if (!job) return;
+  ttsBusy = true;
+  try {
+    const wav = await synthesize(job.text, job.voice);
+    fs.mkdirSync(TTS_DIR, { recursive: true });
+    fs.writeFileSync(job.file, wav);
+    job.resolve(wav);
+  } catch (err) {
+    job.reject(Object.assign(err, { status: 502 }));
+  } finally {
+    ttsJobs.delete(job.file);
+    ttsBusy = false;
+    pumpTts();
+  }
+}
+
+async function tts({ text = '', voice = VOICES[0], urgent = false }) {
   text = String(text).trim();
   if (!text || text.length > 600) throw Object.assign(new Error('Invalid text'), { status: 400 });
   if (!VOICES.includes(voice)) throw Object.assign(new Error('Unknown voice'), { status: 400 });
-  const file = path.join(TTS_DIR, `${createHash('sha1').update(`${voice}|${text}`).digest('hex')}.wav`);
+  const file = path.join(TTS_DIR, `${createHash('sha1').update(`kokoro|${voice}|${text}`).digest('hex')}.wav`);
   if (fs.existsSync(file)) return fs.readFileSync(file);
-  // the same sentence requested twice at once (prefetch + click) is generated once
-  if (!ttsInFlight.has(file)) {
-    ttsInFlight.set(file, (async () => {
-      // Plain text only: a style instruction in the text gets read aloud, and this model rejects systemInstruction.
-      const data = await geminiRequest({
-        models: TTS_MODELS,
-        payload: {
-          contents: [{ parts: [{ text }] }],
-          generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } },
-        },
-      });
-      const part = data?.candidates?.[0]?.content?.parts?.find((p) => p.inlineData);
-      if (!part) throw Object.assign(new Error('No audio returned'), { status: 502 });
-      const raw = Buffer.from(part.inlineData.data, 'base64');
-      // gemini-3.8-flash-tts returns a WAV file, older models raw 16-bit PCM
-      const wav = raw.subarray(0, 4).toString() === 'RIFF'
-        ? raw
-        : toWav(raw, Number(part.inlineData.mimeType.match(/rate=(\d+)/)?.[1]) || 24000);
-      fs.mkdirSync(TTS_DIR, { recursive: true });
-      fs.writeFileSync(file, wav);
-      return wav;
-    })().finally(() => ttsInFlight.delete(file)));
+  let job = ttsJobs.get(file);
+  if (!job) {
+    job = { file, text, voice };
+    job.promise = new Promise((resolve, reject) => Object.assign(job, { resolve, reject }));
+    ttsJobs.set(file, job);
+    (urgent ? ttsQueue.urgent : ttsQueue.later).push(job);
+  } else if (urgent && ttsQueue.later.includes(job)) {
+    // was only prefetched, now someone is waiting for it
+    ttsQueue.later.splice(ttsQueue.later.indexOf(job), 1);
+    ttsQueue.urgent.push(job);
   }
-  return ttsInFlight.get(file);
+  pumpTts();
+  return job.promise;
 }
 
 function chat({ messages = [], mode = 'free', unitId }) {
@@ -298,7 +333,10 @@ function chat({ messages = [], mode = 'free', unitId }) {
   // Gemini expects the conversation to start with the user
   if (contents[0]?.role !== 'user') contents.unshift({ role: 'user', parts: [{ text: '(The student opened the conversation screen.)' }] });
   if (contents.length === 1) contents.push({ role: 'model', parts: [{ text: opener }] });
-  return callGemini({ system: tutorPrompt({ mode, unit, progress: readProgress() }), contents, schema: CHAT_SCHEMA, thinking: 'low' });
+  return callGemini({
+    system: tutorPrompt({ mode, unit, progress: readProgress() }), contents, schema: CHAT_SCHEMA,
+    models: CHAT_MODELS, thinking: 'low', timeoutMs: CHAT_TIMEOUT_MS,
+  });
 }
 
 async function checkPronunciation({ audio, mimeType = 'audio/wav', target = '' }) {
@@ -390,4 +428,9 @@ export async function handler(req, res) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   http.createServer(handler).listen(PORT, () => console.log(`English bot: http://localhost:${PORT}`));
+  // warm the voice up so the first sentence is not slow (the first run also downloads the model, ~90MB)
+  loadKokoro()
+    .then((model) => model.generate('Hi.', { voice: VOICES[0] }))
+    .then(() => console.log('Voice ready'))
+    .catch((err) => console.error('Voice failed to load, the browser voice will be used:', err.message));
 }

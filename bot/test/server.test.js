@@ -17,12 +17,23 @@ let geminiReplies = [];
 globalThis.fetch = async (url, init) => {
   if (!String(url).includes('generativelanguage.googleapis.com')) return realFetch(url, init);
   geminiCalls.push({ url: String(url), key: init.headers['x-goog-api-key'], body: JSON.parse(init.body) });
-  const { status, json } = geminiReplies.shift() ?? { status: 500, json: { error: { message: 'no stub' } } };
+  const { status, json, hang } = geminiReplies.shift() ?? { status: 500, json: { error: { message: 'no stub' } } };
+  // a key that never answers: only the request timeout ends it
+  if (hang) return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason)));
   return new Response(JSON.stringify(json), { status });
 };
 const geminiOk = (obj) => ({ status: 200, json: { candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] } }] } });
 
-const { handler } = await import('../server.js');
+const { handler, setSynthesizer, resetCooldowns } = await import('../server.js');
+
+// The Kokoro model is replaced by a stub that records the order of generated sentences.
+let synthCalls = [];
+let synthDelay = 0;
+setSynthesizer(async (text, voice) => {
+  synthCalls.push(text);
+  await new Promise((r) => setTimeout(r, synthDelay));
+  return Buffer.concat([Buffer.from('RIFF'), Buffer.from(`${voice}|${text}`)]);
+});
 let server;
 let base;
 
@@ -89,10 +100,38 @@ test('a key that just failed is skipped on the next request', async () => {
   assert.deepEqual(geminiCalls.map((c) => c.key), ['paid-key']);
 });
 
-test('chat asks for low thinking to keep replies fast', async () => {
-  geminiReplies.push(geminiOk({ reply_en: 'Hi!', say_it: '', correction: '', hebrew_help: '', new_words: [], hint_en: '', mission_done: false }));
+const chatReply = { reply_en: 'Hi!', say_it: '', correction: '', hebrew_help: '', new_words: [], hint_en: '', mission_done: false };
+
+test('chat uses the fast flash-lite model, without a thinking setting', async () => {
+  geminiReplies.push(geminiOk(chatReply));
   await post('/api/chat', { mode: 'free', messages: [{ role: 'user', text: 'hello' }] });
-  assert.equal(geminiCalls[0].body.generationConfig.thinkingConfig.thinkingLevel, 'low');
+  assert.match(geminiCalls[0].url, /gemini-3\.5-flash-lite:/);
+  assert.equal(geminiCalls[0].body.generationConfig.thinkingConfig, undefined);
+});
+
+test('a hanging key delays a chat reply by at most ~2.5s, then is skipped', async () => {
+  resetCooldowns();
+  geminiReplies.push({ hang: true }, geminiOk(chatReply));
+  const t = Date.now();
+  const res = await post('/api/chat', { mode: 'free', messages: [{ role: 'user', text: 'hello' }] });
+  const ms = Date.now() - t;
+  assert.equal(res.status, 200);
+  assert.ok(ms >= 2400 && ms < 4000, `took ${ms}ms`);
+  geminiCalls = [];
+  geminiReplies.push(geminiOk(chatReply));
+  await post('/api/chat', { mode: 'free', messages: [{ role: 'user', text: 'hello again' }] });
+  assert.deepEqual(geminiCalls.map((c) => c.key), ['paid-key']);
+});
+
+test('an exhausted free quota is not retried on the next messages', async () => {
+  resetCooldowns();
+  geminiReplies.push({ status: 429, json: { error: { message: 'You exceeded your current quota, please check your plan' } } }, geminiOk(chatReply));
+  await post('/api/chat', { mode: 'free', messages: [{ role: 'user', text: 'hello' }] });
+  assert.deepEqual(geminiCalls.map((c) => c.key), ['free-key', 'paid-key']);
+  geminiCalls = [];
+  geminiReplies.push(geminiOk(chatReply));
+  await post('/api/chat', { mode: 'free', messages: [{ role: 'user', text: 'hello again' }] });
+  assert.deepEqual(geminiCalls.map((c) => c.key), ['paid-key']); // straight to the working key
 });
 
 test('empty placement answer is A0 without calling Gemini', async () => {
@@ -119,32 +158,29 @@ test('pronunciation: real speech returns the coach result', async () => {
   assert.deepEqual(r, coach);
 });
 
-test('voice: returns WAV, sends plain text only, and serves repeats from the disk cache', async () => {
-  const wav = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(60)]);
-  geminiReplies.push({ status: 200, json: { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'audio/wav', data: wav.toString('base64') } }] } }] } });
-  const first = await post('/api/tts', { text: 'Nice to meet you.', voice: 'Puck' });
+test('voice: local Kokoro, WAV response, repeats served from the disk cache, no Gemini call', async () => {
+  synthCalls = [];
+  const first = await post('/api/tts', { text: 'Nice to meet you.', voice: 'am_michael' });
   assert.equal(first.status, 200);
   assert.equal(first.headers.get('content-type'), 'audio/wav');
-  assert.deepEqual(Buffer.from(await first.arrayBuffer()), wav);
-  const { body } = geminiCalls[0];
-  assert.equal(body.contents[0].parts[0].text, 'Nice to meet you.'); // a style prefix would be read aloud
-  assert.equal(body.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, 'Puck');
-  assert.equal(body.systemInstruction, undefined); // rejected by the TTS model
-
-  const again = await post('/api/tts', { text: 'Nice to meet you.', voice: 'Puck' });
-  assert.deepEqual(Buffer.from(await again.arrayBuffer()), wav);
-  assert.equal(geminiCalls.length, 1);
+  assert.equal(Buffer.from(await first.arrayBuffer()).toString(), 'RIFFam_michael|Nice to meet you.');
+  const again = await post('/api/tts', { text: 'Nice to meet you.', voice: 'am_michael' });
+  assert.equal(again.status, 200);
+  assert.deepEqual(synthCalls, ['Nice to meet you.']); // generated once
+  assert.equal(geminiCalls.length, 0);
+  assert.equal((await post('/api/tts', { text: 'Hello', voice: 'Kore' })).status, 400); // old Gemini voice
+  assert.equal((await post('/api/tts', { text: '' })).status, 400);
 });
 
-test('voice: raw PCM from older models is wrapped as WAV; bad input is rejected', async () => {
-  const pcm = Buffer.alloc(100, 1);
-  geminiReplies.push({ status: 200, json: { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'audio/L16;codec=pcm;rate=24000', data: pcm.toString('base64') } }] } }] } });
-  const out = Buffer.from(await (await post('/api/tts', { text: 'Hello', voice: 'Kore' })).arrayBuffer());
-  assert.equal(out.subarray(0, 4).toString(), 'RIFF');
-  assert.equal(out.readUInt32LE(24), 24000);
-  assert.equal(out.length, 44 + pcm.length);
-  assert.equal((await post('/api/tts', { text: 'Hello', voice: 'Nobody' })).status, 400);
-  assert.equal((await post('/api/tts', { text: '' })).status, 400);
+test('voice: a sentence the learner is waiting for jumps ahead of background prefetch', async () => {
+  synthCalls = [];
+  synthDelay = 30;
+  const later = ['One.', 'Two.', 'Three.', 'Four.'].map((text) => post('/api/tts', { text, voice: 'af_heart' }));
+  await new Promise((r) => setTimeout(r, 10)); // "One." is already being generated
+  const urgent = post('/api/tts', { text: 'Four.', voice: 'af_heart', urgent: true }); // was queued last
+  await Promise.all([...later, urgent]);
+  synthDelay = 0;
+  assert.deepEqual(synthCalls, ['One.', 'Four.', 'Two.', 'Three.']);
 });
 
 test('pronunciation check requires audio', async () => {
